@@ -1,5 +1,6 @@
 // Based on fabienbutz/microsoft-todo-mcp @83d8f44 (https://github.com/fabienbutz/microsoft-todo-mcp)
 // Copyright (c) 2026 Fabien Butz, MIT License (see LICENSE).
+// Modified for my-task: wires the cross-list due-range service (`due`) into the tool context.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig, scopesFor, type AppConfig } from "./config";
@@ -11,6 +12,7 @@ import { systemClock } from "./lib/clock";
 import { cryptoIds } from "./lib/ids";
 import { createLogger } from "./lib/logger";
 import { IdempotencyCache } from "./lib/idempotency";
+import { DueTasksApi } from "./todo/due";
 import { TaskListsApi } from "./todo/lists";
 import { TasksApi } from "./todo/tasks";
 import { allTools } from "./tools/registry";
@@ -30,12 +32,15 @@ export async function runServer(config: AppConfig = loadConfig()): Promise<void>
   await auth.init();
 
   const graph = new GraphClient({ config, tokens: auth, logger, ids: cryptoIds });
+  const lists = new TaskListsApi(graph, config.maxResults);
+  const tasks = new TasksApi(graph, config.maxResults);
   const ctx: ToolContext = {
     logger,
     ids: cryptoIds,
     auth,
-    lists: new TaskListsApi(graph, config.maxResults),
-    tasks: new TasksApi(graph, config.maxResults),
+    lists,
+    tasks,
+    due: new DueTasksApi(lists, tasks),
     idempotency: new IdempotencyCache(systemClock, IDEMPOTENCY_TTL_MS),
   };
 

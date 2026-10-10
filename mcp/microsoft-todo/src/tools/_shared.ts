@@ -1,11 +1,13 @@
 // Based on fabienbutz/microsoft-todo-mcp @83d8f44 (https://github.com/fabienbutz/microsoft-todo-mcp)
 // Copyright (c) 2026 Fabien Butz, MIT License (see LICENSE).
+// Modified for my-task: ToolContext gains `due` (cross-list due-range query).
 import { z } from "zod";
 import { AppError, toAppError } from "../graph/errors";
 import { IdempotencyCache } from "../lib/idempotency";
 import type { IdGenerator } from "../lib/ids";
 import type { Logger } from "../lib/logger";
 import type { AuthManager } from "../auth/auth-state";
+import type { DueTasksApi } from "../todo/due";
 import type { TaskListsApi } from "../todo/lists";
 import type { TasksApi } from "../todo/tasks";
 
@@ -18,6 +20,7 @@ export interface ToolContext {
   auth: AuthManager;
   lists: TaskListsApi;
   tasks: TasksApi;
+  due: DueTasksApi;
   idempotency: IdempotencyCache;
 }
 

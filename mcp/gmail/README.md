@@ -35,7 +35,7 @@ npm test
 1. "API 및 서비스 → 라이브러리"에서 **Gmail API**를 사용 설정합니다.
 2. "OAuth 동의 화면"을 설정하고(외부), 범위에 `gmail.readonly`를 추가합니다.
 3. "사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID"에서 유형을 **데스크톱 앱**으로 만들고 JSON을 내려받습니다.
-4. 내려받은 파일을 `~/.config/my-task-gmail-mcp/client.json`으로 옮기고 `chmod 600` 합니다. (또는 환경 변수 `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`)
+4. 내려받은 JSON의 `client_id`와 `client_secret`을 루트 `.env.local`의 `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`에 넣습니다(내려받은 파일은 지웁니다).
 
 **2) 로그인** (한 번)
 
@@ -43,7 +43,7 @@ npm test
 node dist/index.js login
 ```
 
-브라우저가 열리면 읽기 전용 접근을 승인합니다. 토큰은 `~/.config/my-task-gmail-mcp/token.json`에 폴더 700, 파일 600으로 저장됩니다. 로그인은 서버가 도는 컴퓨터에서 브라우저로 해야 합니다(로컬 주소로 되돌아오는 방식). 로그아웃은 `node dist/index.js logout`.
+브라우저가 열리면 읽기 전용 접근을 승인합니다. 리프레시 토큰은 루트 `.env.local`(권한 600)의 `GMAIL_REFRESH_TOKEN` 줄에 저장되고, 액세스 토큰은 실행 중 메모리에만 둡니다. 저장 위치는 `MY_TASK_ENV_FILE`(비서가 넘김), 없으면 저장소 루트의 `.env.local`입니다. 파일 끝의 `# --- 토큰 (자동 갱신, 직접 고치지 마세요)` 구역은 서버가 고쳐 쓰므로 손으로 고치지 않습니다. 예전처럼 홈 폴더에 토큰 파일이 남아 있으면 `agent`에서 `node dist/index.js migrate-tokens`(먼저 `--dry-run`)로 옮깁니다. 로그인은 서버가 도는 컴퓨터에서 브라우저로 해야 합니다(로컬 주소로 되돌아오는 방식). 로그아웃(`node dist/index.js logout`)은 그 줄을 지웁니다.
 
 ## 동의 화면 "테스트" 상태와 7일 만료
 

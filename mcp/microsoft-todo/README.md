@@ -47,7 +47,7 @@ npm run build
 npm test
 ```
 
-Node 20 이상. 처음 실행하면 기기 코드 로그인 안내가 나오고, 토큰은 `~/.config/microsoft-todo-mcp/token-cache.json`에 파일 권한 600으로 저장됩니다. 읽기 전용으로만 쓰려면 `MS_TODO_READONLY=1`(쓰기 도구 숨김) 또는 `MS_TODO_SCOPE_READONLY=1`(`Tasks.Read` 권한만 요청)을 씁니다.
+Node 20 이상. 처음 실행하면 기기 코드 로그인 안내가 나오고, 토큰 캐시는 루트 `.env.local`(권한 600)의 `MS_TODO_TOKEN_CACHE_DATA` 한 줄(base64)에 저장되고, `logout`은 그 줄을 지웁니다. 저장 위치는 `MY_TASK_ENV_FILE`(비서가 넘김), 없으면 저장소 루트의 `.env.local`입니다. 파일 끝의 `# --- 토큰 (자동 갱신, 직접 고치지 마세요)` 구역은 서버가 고쳐 쓰므로 손으로 고치지 않습니다. 예전처럼 홈 폴더에 토큰 파일이 남아 있으면 `agent`에서 `node dist/index.js migrate-tokens`(먼저 `--dry-run`)로 옮깁니다. 읽기 전용으로만 쓰려면 `MS_TODO_READONLY=1`(쓰기 도구 숨김) 또는 `MS_TODO_SCOPE_READONLY=1`(`Tasks.Read` 권한만 요청)을 씁니다.
 
 기본 클라이언트는 Microsoft의 Graph 명령줄 도구용 공개 클라이언트입니다. 본인 앱 등록으로 바꾸려면 [`docs/upstream/ENTRA-APP-SETUP.md`](docs/upstream/ENTRA-APP-SETUP.md)를 보고 `MS_TODO_CLIENT_ID`를 지정합니다.
 

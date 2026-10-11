@@ -1,0 +1,9 @@
+{
+  "services": [
+    { "name": "veloo", "url": "https://veloo.2joon.com/" },
+    { "name": "llm-proxy", "url": "https://llm.2joon.com/v1/models", "slowMs": 3000 },
+    { "name": "ssh", "host": "127.0.0.1", "port": 22 }
+  ],
+  "containers": [{ "name": "veloo-app", "restartWarn": 3 }],
+  "llm": { "name": "school-llm", "baseUrl": "https://pr5.gachon.ac.kr:3389/v1", "models": ["qwen3.6:35b-a3b"] }
+}

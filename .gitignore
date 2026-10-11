@@ -7,3 +7,6 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+
+# server-mcp 점검 대상(개인 서버 주소). 예시는 mcp/server/targets.example.json
+mcp/server/targets.json

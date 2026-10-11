@@ -1,6 +1,6 @@
 // my-task original code (not derived from upstream).
-// 이 파일은 mcp/microsoft-todo, gmail, kakao, veloo 와 agent 의 src/env-file.ts 에 같은 내용으로 있다.
-// 한 곳을 고치면 다섯 곳 모두 고친다(mcp/microsoft-todo/test/env-file-same.test.ts 가 지킨다).
+// 이 파일은 mcp/microsoft-todo, gmail, kakao 와 agent 의 src/env-file.ts 에 같은 내용으로 있다.
+// 한 곳을 고치면 네 곳 모두 고친다(mcp/microsoft-todo/test/env-file-same.test.ts 가 지킨다).
 import { randomBytes } from "node:crypto";
 import { open, readFile, rename, stat, unlink } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";

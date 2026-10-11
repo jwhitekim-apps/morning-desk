@@ -7,7 +7,7 @@ const GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 
 /** 옛 토큰 파일 한 종류: 찾을 위치들, 옮길 키, 파일 내용에서 값을 꺼내는 방법. */
 interface Kind {
-  name: "todo" | "gmail" | "kakao" | "veloo";
+  name: "todo" | "gmail" | "kakao";
   key: string;
   paths: (home: string) => string[];
   /** 값을 꺼낸다. 쓸 수 없는 파일이면 이유를 던진다(값은 넣지 않는다). */
@@ -51,16 +51,6 @@ export const KINDS: readonly Kind[] = [
     key: "KAKAO_REFRESH_TOKEN",
     paths: (h) => [join(h, ".config", "my-task-kakao-mcp", "token.json"), join(h, ".config", "my-task", "kakao", "token.json")],
     extract: (text) => str(json(text).refresh_token, "refresh_token"),
-  },
-  {
-    name: "veloo",
-    key: "VELOO_SESSION",
-    paths: (h) => [join(h, ".config", "my-task-veloo-mcp", "session.json"), join(h, ".config", "my-task", "veloo", "session.json")],
-    extract: (text) => {
-      const v = str(json(text).cookie, "cookie");
-      if (!v.startsWith("access_token=")) throw new Error("세션 모양이 아닙니다");
-      return v;
-    },
   },
 ];
 

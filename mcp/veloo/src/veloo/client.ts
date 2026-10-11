@@ -34,8 +34,8 @@ export class VelooClient {
     this.now = opts.now ?? Date.now;
   }
 
-  status(): { configured: boolean; savedSession: boolean } {
-    return { configured: Boolean(this.opts.baseUrl && this.opts.username && this.opts.password), savedSession: Boolean(this.cookie ?? this.opts.store.read()) };
+  async status(): Promise<{ configured: boolean; savedSession: boolean }> {
+    return { configured: Boolean(this.opts.baseUrl && this.opts.username && this.opts.password), savedSession: Boolean(this.cookie ?? (await this.opts.store.read())) };
   }
 
   private base(): string {
@@ -58,7 +58,7 @@ export class VelooClient {
   /** 조회(GET). 응답 본문(JSON)을 돌려준다. 저장된 세션이 거부되면 한 번만 다시 로그인해서 재시도한다. */
   async get(path: string, op: string): Promise<unknown> {
     const base = this.base();
-    const reused = this.cookie ?? this.loadSaved();
+    const reused = this.cookie ?? (await this.loadSaved());
     // 이번 호출에서 방금 로그인한 세션이 거부되면 다시 로그인해도 소용이 없고 벨루에 세션만 쌓인다. 그때는 바로 포기한다.
     const fresh = reused === null;
     let cookie = reused ?? (await this.login());
@@ -75,7 +75,7 @@ export class VelooClient {
       const sessionProblem = res.status === 401 || (res.status >= 300 && res.status < 400);
       if (sessionProblem && attempt === 0 && !fresh) {
         this.cookie = null;
-        this.opts.store.clear();
+        await this.opts.store.clear();
         cookie = await this.login();
         continue;
       }
@@ -89,10 +89,10 @@ export class VelooClient {
     }
   }
 
-  private loadSaved(): string | null {
+  private async loadSaved(): Promise<string | null> {
     if (this.loadedFromStore) return null;
     this.loadedFromStore = true;
-    this.cookie = this.opts.store.read();
+    this.cookie = await this.opts.store.read();
     return this.cookie;
   }
 
@@ -131,7 +131,7 @@ export class VelooClient {
     if (!token) throw new AppError("contract_changed", "Veloo's login returned no session cookie; its API may have changed.");
     this.lastLoginFailure = null;
     this.cookie = token;
-    this.opts.store.write(token);
+    await this.opts.store.write(token);
     return token;
   }
 }

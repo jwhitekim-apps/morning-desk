@@ -1,7 +1,6 @@
 // Based on fabienbutz/microsoft-todo-mcp @83d8f44 (https://github.com/fabienbutz/microsoft-todo-mcp)
 // Copyright (c) 2026 Fabien Butz, MIT License (see LICENSE).
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { resolveEnvFilePath } from "./env-file";
 
 /**
  * Default client id: the well-known **Microsoft Graph CLI / PowerShell** public client —
@@ -19,7 +18,8 @@ const PUBLISHED_CLIENT_ID = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
 export interface AppConfig {
   clientId: string;
   authority: string;
-  tokenCachePath: string;
+  /** 토큰 캐시를 저장하는 루트 `.env.local` (`MY_TASK_ENV_FILE`). */
+  envFilePath: string;
   /** Request only `Tasks.Read` (true read-only capability; requires re-login). */
   scopeReadonly: boolean;
   /** Runtime guard: hide write + destructive tools. */
@@ -36,7 +36,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     clientId: env.MS_TODO_CLIENT_ID ?? PUBLISHED_CLIENT_ID,
     authority: env.MS_TODO_AUTHORITY ?? "https://login.microsoftonline.com/common",
-    tokenCachePath: env.MS_TODO_TOKEN_CACHE ?? join(homedir(), ".config", "microsoft-todo-mcp", "token-cache.json"),
+    envFilePath: resolveEnvFilePath(env),
     scopeReadonly: envBool(env.MS_TODO_SCOPE_READONLY),
     readonly: envBool(env.MS_TODO_READONLY),
     noDestructive: envBool(env.MS_TODO_NO_DESTRUCTIVE),

@@ -34,7 +34,7 @@ export function createServer(ctx: ToolContext, tools: readonly ToolDef[] = allTo
 }
 
 export async function runServer(config: AppConfig = loadConfig(), logger: Logger = createLogger(config.logLevel)): Promise<void> {
-  const auth = new TokenProvider(new TokenStore(config.tokenPath), () => loadOAuthClient(config));
+  const auth = new TokenProvider(new TokenStore(config.envFilePath), () => loadOAuthClient(config));
   const gmail = new GmailApi(new GmailClient(auth, logger), logger);
   const server = createServer({ logger, auth, gmail });
   logger.info("my-task-gmail-mcp starting", { version: VERSION, registeredTools: allTools.length });

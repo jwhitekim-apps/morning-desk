@@ -33,9 +33,10 @@ export interface AppConfig {
 
 /** 서버마다 필요한 환경 변수의 이름. 최소 권한: 여기 없는 변수는 자식 프로세스에 넘기지 않는다. */
 const SERVER_ENV: Record<ServerName, { dir: string; keys: readonly string[] }> = {
-  todo: { dir: "microsoft-todo", keys: ["MS_TODO_CLIENT_ID", "MS_TODO_AUTHORITY", "MS_TODO_TOKEN_CACHE", "MS_TODO_MAX_RESULTS", "MS_TODO_READONLY", "MS_TODO_SCOPE_READONLY"] },
-  gmail: { dir: "gmail", keys: ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_MCP_DIR"] },
-  kakao: { dir: "kakao", keys: ["KAKAO_REST_API_KEY", "KAKAO_CLIENT_SECRET", "KAKAO_REFRESH_TOKEN", "KAKAO_LINK_URL", "KAKAO_DRY_RUN", "KAKAO_MCP_DIR"] },
+  todo: { dir: "microsoft-todo", keys: ["MS_TODO_CLIENT_ID", "MS_TODO_AUTHORITY", "MS_TODO_MAX_RESULTS", "MS_TODO_READONLY", "MS_TODO_SCOPE_READONLY"] },
+  gmail: { dir: "gmail", keys: ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET"] },
+  // 토큰(`KAKAO_REFRESH_TOKEN` 등)은 넘기지 않는다. 서버가 `MY_TASK_ENV_FILE`에서 자기 키만 직접 읽고 고쳐 쓴다.
+  kakao: { dir: "kakao", keys: ["KAKAO_REST_API_KEY", "KAKAO_CLIENT_SECRET", "KAKAO_LINK_URL", "KAKAO_DRY_RUN"] },
   github: { dir: "github", keys: ["GITHUB_MCP_TOKEN", "GITHUB_MCP_NOTIFICATIONS_TOKEN", "GITHUB_MCP_REPOS"] },
   folio: { dir: "folio", keys: ["FOLIO_SUPABASE_URL", "FOLIO_SUPABASE_KEY", "FOLIO_TABLE"] },
 };
@@ -51,7 +52,7 @@ export function defaultRepoRoot(): string {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, repoRoot: string = defaultRepoRoot()): AppConfig {
   const servers = {} as Record<ServerName, ServerSpec>;
   for (const [name, def] of Object.entries(SERVER_ENV) as [ServerName, (typeof SERVER_ENV)[ServerName]][]) {
-    const childEnv: Record<string, string> = {};
+    const childEnv: Record<string, string> = { MY_TASK_ENV_FILE: join(repoRoot, ".env.local") };
     for (const key of [...BASE_KEYS, ...def.keys]) {
       const value = env[key];
       if (value !== undefined) childEnv[key] = value;

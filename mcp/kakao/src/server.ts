@@ -32,7 +32,7 @@ export function createServer(ctx: ToolContext, tools: readonly ToolDef[] = allTo
 }
 
 export async function runServer(config: AppConfig = loadConfig(), logger: Logger = createLogger(config.logLevel)): Promise<void> {
-  const auth = new KakaoAuth(new TokenStore(config.tokenPath), () => config);
+  const auth = new KakaoAuth(new TokenStore(config.envFilePath), () => config);
   const kakao = new KakaoApi(auth, logger, { linkUrl: config.linkUrl, dryRunAll: config.dryRunAll });
   const server = createServer({ logger, auth, kakao });
   logger.info("my-task-kakao-mcp starting", { version: VERSION, registeredTools: allTools.length });

@@ -1,5 +1,5 @@
 // my-task original code (not derived from upstream).
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -34,13 +34,16 @@ function world(mode: "ok" | "send-500" | "token-revoked" | "refresh-rotates") {
   }) as FetchFn;
   const lines: string[] = [];
   const logger = createLogger("debug", (l) => lines.push(l));
-  const auth = new KakaoAuth(new TokenStore(join(dir, "token.json")), () => ({ restApiKey: REST_KEY, clientSecret: CLIENT_SECRET, refreshToken: REFRESH }), fetchFn);
+  const envPath = join(dir, ".env.local");
+  const envBefore = sharedEnv({ KAKAO_REFRESH_TOKEN: REFRESH, KAKAO_REST_API_KEY: REST_KEY, KAKAO_CLIENT_SECRET: CLIENT_SECRET });
+  writeFileSync(envPath, envBefore, { mode: 0o600 });
+  const auth = new KakaoAuth(new TokenStore(envPath), () => ({ restApiKey: REST_KEY, clientSecret: CLIENT_SECRET }), fetchFn);
   const kakao = new KakaoApi(auth, logger, { linkUrl: "https://example.com", dryRunAll: false, fetchFn });
-  return { ctx: { logger, auth, kakao }, lines };
+  return { ctx: { logger, auth, kakao }, lines, envPath, envBefore };
 }
 
 async function runAllTools(mode: Parameters<typeof world>[0]) {
-  const { ctx, lines } = world(mode);
+  const { ctx, lines, envPath, envBefore } = world(mode);
   const server = createServer(ctx);
   const [c, s] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "t", version: "0" });
@@ -55,8 +58,42 @@ async function runAllTools(mode: Parameters<typeof world>[0]) {
   await call("send_many_to_me", { messages: [BODY, BODY2] });
   await call("send_to_me", { text: BODY, dryRun: true });
   await call("send_to_me", { text: "나".repeat(230) });
-  return { responses: out, logs: lines.join("") };
+  return { responses: out, logs: lines.join(""), envPath, envBefore };
 }
+
+/** 실제 `.env.local`처럼 정리된 파일: 다른 서버들의 비밀과 이 서버의 토큰이 함께 있다. */
+function sharedEnv(own: Record<string, string>): string {
+  const v = (k: string, d: string) => `${k}=${own[k] ?? d}`;
+  return [
+    "# Gmail",
+    v("GMAIL_CLIENT_ID", "gmail-client-id-0101"),
+    v("GMAIL_CLIENT_SECRET", "gmail-client-secret-0102"),
+    "",
+    "# 카카오",
+    v("KAKAO_REST_API_KEY", "kakao-rest-key-0201"),
+    v("KAKAO_CLIENT_SECRET", "kakao-client-secret-0202"),
+    "KAKAO_LINK_URL=https://to-do.live.com/tasks/",
+    "",
+    "# GitHub · 모델",
+    "GITHUB_MCP_TOKEN=ghp-github-token-0301",
+    "LOCAL_LLM_API_KEY=llm-api-key-0401",
+    "",
+    "# --- 토큰 (자동 갱신, 직접 고치지 마세요)",
+    v("MS_TODO_TOKEN_CACHE_DATA", "dG9kby1jYWNoZS0wNTAx"),
+    v("GMAIL_REFRESH_TOKEN", "gmail-refresh-0601"),
+    v("KAKAO_REFRESH_TOKEN", "kakao-refresh-0701"),
+    v("VELOO_SESSION", "access_token=veloo-session-0801"),
+    "",
+  ].join("\n");
+}
+
+/** 주소가 아닌 모든 값(비밀로 다룬다). */
+const envValues = (text: string): string[] =>
+  text.split("\n").map((l) => /^[A-Z_]+=(.+)$/.exec(l)?.[1]).filter((x): x is string => Boolean(x) && !x!.startsWith("https://"));
+
+/** 자기 키 줄을 뺀 나머지가 글자 그대로인지 본다. */
+const withoutKey = (text: string, key: string): string => text.split("\n").filter((l) => !l.startsWith(`${key}=`)).join("\n");
+
 
 const SECRETS = [REFRESH, ACCESS, CLIENT_SECRET, REST_KEY, "ROTATED-REFRESH-0005", "Bearer"];
 const MODES = ["ok", "send-500", "token-revoked", "refresh-rotates"] as const;
@@ -102,4 +139,18 @@ describe("tokens stay out of tool responses", () => {
     expect(responses[1]).toContain("auth_expired");
     expect(responses[1]).toContain("Sign in to Kakao again");
   });
+});
+
+describe("the shared .env.local", () => {
+  for (const mode of MODES) {
+    it(`no value from it reaches logs or responses, and other lines stay as they were (${mode})`, async () => {
+      const { logs, responses, envPath, envBefore } = await runAllTools(mode);
+      const seen = `${logs}\n${responses.join("\n")}`;
+      for (const value of envValues(envBefore)) expect(seen, `${value} leaked`).not.toContain(value);
+      const after = readFileSync(envPath, "utf-8");
+      expect(withoutKey(after, "KAKAO_REFRESH_TOKEN")).toBe(withoutKey(envBefore, "KAKAO_REFRESH_TOKEN"));
+      const line = after.split("\n").find((l) => l.startsWith("KAKAO_REFRESH_TOKEN="));
+      expect(line).toBe(`KAKAO_REFRESH_TOKEN=${mode === "refresh-rotates" ? "ROTATED-REFRESH-0005" : REFRESH}`);
+    });
+  }
 });

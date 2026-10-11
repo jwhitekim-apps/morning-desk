@@ -80,7 +80,7 @@ function toTask(row: unknown): VelooTask {
 export class VelooApi {
   constructor(private readonly client: VelooClient, private readonly logger: Logger) {}
 
-  status(): { configured: boolean; savedSession: boolean } {
+  status(): Promise<{ configured: boolean; savedSession: boolean }> {
     return this.client.status();
   }
 

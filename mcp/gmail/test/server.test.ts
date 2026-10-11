@@ -12,7 +12,7 @@ import pkg from "../package.json";
 
 async function connect(tools = allTools) {
   const lines: string[] = [];
-  const auth = { status: () => ({ signedIn: false }), getAccessToken: async () => "unused" };
+  const auth = { status: async () => ({ signedIn: false }), getAccessToken: async () => "unused" };
   const server = createServer({ logger: createLogger("debug", (l) => lines.push(l)), auth, gmail: {} as never }, tools);
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test", version: "0.0.0" });

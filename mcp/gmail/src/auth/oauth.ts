@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { AppError } from "../errors";
-import type { OAuthClient, StoredToken, TokenStore } from "./store";
+import type { OAuthClient, TokenStore } from "./store";
 
 /** 요청하는 Gmail 권한은 이것 하나뿐이다(읽기 전용). */
 export const GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
@@ -70,9 +70,10 @@ async function postToken(fetchFn: FetchFn, form: Record<string, string>): Promis
   throw new AppError("google_error", "Google's token endpoint returned an error.", { status: res.status });
 }
 
-/** 저장된 토큰을 읽고, 액세스 토큰이 곧 만료되면 갱신 토큰으로 새로 받는다. 동시에 여러 번 불러도 갱신은 한 번만 한다. */
+/** 갱신 토큰을 읽어 액세스 토큰을 받는다. 액세스 토큰은 메모리에만 두고, 동시에 여러 번 불러도 갱신은 한 번만 한다. */
 export class TokenProvider {
   private inflight: Promise<string> | null = null;
+  private access: { token: string; expiresAt: number } | null = null;
 
   constructor(
     private readonly store: TokenStore,
@@ -81,10 +82,9 @@ export class TokenProvider {
     private readonly now: () => number = Date.now,
   ) {}
 
-  /** 로그인되어 있는지만 본다(네트워크 없음). 토큰 값은 돌려주지 않는다. */
-  status(): { signedIn: boolean; scope?: string } {
-    const t = this.store.read();
-    return t ? { signedIn: true, scope: t.scope } : { signedIn: false };
+  /** 로그인되어 있는지만 본다(네트워크 없음). 토큰 값은 돌려주지 않는다. 권한은 로그인 때 읽기 전용으로 확인했다. */
+  async status(): Promise<{ signedIn: boolean; scope?: string }> {
+    return (await this.store.read()) ? { signedIn: true, scope: GMAIL_READONLY_SCOPE } : { signedIn: false };
   }
 
   getAccessToken(): Promise<string> {
@@ -95,31 +95,30 @@ export class TokenProvider {
   }
 
   private async load(): Promise<string> {
-    const saved = this.store.read();
-    if (!saved) throw new AppError("auth_required", "Not signed in. Run `login` first.");
-    if (saved.scope !== GMAIL_READONLY_SCOPE) {
-      throw new AppError("permission_denied", "The saved sign-in has a scope other than read-only Gmail. Run `logout` then `login`.");
-    }
-    if (saved.access_token && saved.expires_at && saved.expires_at - EXPIRY_MARGIN_MS > this.now()) return saved.access_token;
+    if (this.access && this.access.expiresAt - EXPIRY_MARGIN_MS > this.now()) return this.access.token;
+    const refreshToken = await this.store.read();
+    if (!refreshToken) throw new AppError("auth_required", "Not signed in. Run `login` first.");
 
     const { clientId, clientSecret } = this.client();
     const body = await postToken(this.fetchFn, {
       client_id: clientId,
       client_secret: clientSecret,
       grant_type: "refresh_token",
-      refresh_token: saved.refresh_token,
+      refresh_token: refreshToken,
     });
     if (!body.access_token) throw new AppError("google_error", "Google returned no access token.");
-    this.store.write({
-      ...saved,
-      // 구글은 갱신 응답에 새 갱신 토큰을 안 주는 것이 보통이다. 주면 새것으로 바꾼다.
-      refresh_token: body.refresh_token ?? saved.refresh_token,
-      access_token: body.access_token,
-      expires_at: this.now() + (body.expires_in ?? 3600) * 1000,
-      saved_at: new Date(this.now()).toISOString(),
-    });
+    if (grantsMoreThanReadonly(body.scope)) {
+      throw new AppError("permission_denied", "The saved sign-in has a scope other than read-only Gmail. Run `logout` then `login`.");
+    }
+    // 구글은 갱신 응답에 새 갱신 토큰을 안 주는 것이 보통이다. 주면 새것으로 바꾼다.
+    if (body.refresh_token && body.refresh_token !== refreshToken) await this.store.write(body.refresh_token);
+    this.access = { token: body.access_token, expiresAt: this.now() + (body.expires_in ?? 3600) * 1000 };
     return body.access_token;
   }
+}
+
+function grantsMoreThanReadonly(scope: string | undefined): boolean {
+  return (scope ?? "").split(" ").some((s) => s && s !== GMAIL_READONLY_SCOPE);
 }
 
 export interface LoginOptions {
@@ -128,14 +127,12 @@ export interface LoginOptions {
   /** 사용자가 열어야 할 주소를 알린다(브라우저 자동 실행은 호출하는 쪽 몫). */
   onUrl: (url: string) => void;
   fetchFn?: FetchFn;
-  now?: () => number;
   timeoutMs?: number;
 }
 
 /** 로컬 되돌림 주소(127.0.0.1)와 PKCE를 쓰는 설치형 앱 로그인. 성공하면 토큰을 저장한다. */
 export async function login(opts: LoginOptions): Promise<void> {
   const fetchFn = opts.fetchFn ?? fetch;
-  const now = opts.now ?? Date.now;
   const pkce = newPkce();
   const state = b64url(randomBytes(16));
 
@@ -186,17 +183,10 @@ export async function login(opts: LoginOptions): Promise<void> {
       throw new AppError("google_error", "Google returned no refresh token. Remove this app at https://myaccount.google.com/permissions and sign in again.");
     }
     // 허용된 권한이 읽기 전용 하나뿐인지 확인한다. 더 넓은 권한이 딸려 왔으면 저장하지 않는다.
-    if ((body.scope ?? "").split(" ").some((s) => s && s !== GMAIL_READONLY_SCOPE)) {
+    if (grantsMoreThanReadonly(body.scope)) {
       throw new AppError("permission_denied", "Google granted more than read-only Gmail access; refusing to save the sign-in.");
     }
-    const token: StoredToken = {
-      refresh_token: body.refresh_token,
-      access_token: body.access_token,
-      expires_at: body.access_token ? now() + (body.expires_in ?? 3600) * 1000 : undefined,
-      scope: GMAIL_READONLY_SCOPE,
-      saved_at: new Date(now()).toISOString(),
-    };
-    opts.store.write(token);
+    await opts.store.write(body.refresh_token);
   } finally {
     server.close();
   }

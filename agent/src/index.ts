@@ -1,10 +1,12 @@
 // my-task original code (not derived from upstream).
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "./config";
 import { loadEnvFile } from "./env";
 import { createLogger } from "./logger";
 import { McpPool } from "./mcp/pool";
 import { MemoryStore } from "./memory";
+import { migrateTokens } from "./migrate";
 import { LlmClient } from "./model/client";
 import { run } from "./run";
 import { VERSION } from "./version";
@@ -16,6 +18,8 @@ Usage:
   my-task-agent run [--dry-run] [--force] Build today's briefing and send it
                                          --dry-run: read and ask the model, but send, add and record nothing; print the briefing
                                          --force:   send again even if today's briefing was already sent
+  my-task-agent migrate-tokens [--dry-run] Move old token files (~/.config/...) into the root .env.local
+                                         --dry-run: only list what would move (key names, no values)
   my-task-agent --version                Print version
 `;
 
@@ -26,6 +30,12 @@ async function main(): Promise<void> {
   const cmd = args[0];
 
   const config = loadConfig();
+  if (cmd === "migrate-tokens") {
+    const result = await migrateTokens({ envPath: join(config.repoRoot, ".env.local"), home: homedir(), dryRun: args.includes("--dry-run") });
+    process.stdout.write(`${result.lines.join("\n")}\n`);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
   loadEnvFile(join(config.repoRoot, ".env.local"));
   const fresh = loadConfig(); // .env.local을 읽은 뒤의 환경으로 다시 만든다
   const logger = createLogger(fresh.logLevel);

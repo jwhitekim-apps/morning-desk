@@ -33,7 +33,7 @@ export function createServer(ctx: ToolContext, tools: readonly ToolDef[] = allTo
 }
 
 export async function runServer(config: AppConfig = loadConfig(), logger: Logger = createLogger(config.logLevel)): Promise<void> {
-  const client = new VelooClient(logger, { baseUrl: config.baseUrl, username: config.username, password: config.password, store: new SessionStore(config.sessionPath) });
+  const client = new VelooClient(logger, { baseUrl: config.baseUrl, username: config.username, password: config.password, store: new SessionStore(config.envFilePath) });
   const veloo = new VelooApi(client, logger);
   const server = createServer({ logger, veloo });
   logger.info("my-task-veloo-mcp starting", { version: VERSION, registeredTools: allTools.length });

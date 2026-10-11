@@ -4,7 +4,7 @@ import { loadConfig, scopesFor } from "./config";
 import { createLogger } from "./lib/logger";
 import { runServer } from "./server";
 import { acquireByDeviceCode, createPca, getCachedAccount } from "./auth/device-code";
-import { clearCache } from "./auth/token-cache";
+import { clearCache, openTokenEnv } from "./auth/token-cache";
 import { toAppError } from "./graph/errors";
 import { VERSION } from "./version";
 
@@ -38,7 +38,7 @@ Model Context Protocol server for Microsoft To Do.
 Usage:
   microsoft-todo-mcp [serve]      Start the MCP server on stdio (default)
   microsoft-todo-mcp login        Sign in via device code (one time)
-  microsoft-todo-mcp logout       Clear the cached token
+  microsoft-todo-mcp logout       Remove the token line from .env.local
   microsoft-todo-mcp whoami       Show the signed-in account
   microsoft-todo-mcp --version    Print version
 
@@ -48,7 +48,7 @@ Flags (serve):
   --scope-readonly   Request only the Tasks.Read scope (requires re-login)
 
 Env:
-  MS_TODO_CLIENT_ID, MS_TODO_AUTHORITY, MS_TODO_TOKEN_CACHE,
+  MS_TODO_CLIENT_ID, MS_TODO_AUTHORITY, MY_TASK_ENV_FILE,
   MS_TODO_MAX_RESULTS, MS_TODO_GRAPH_BASE, LOG_LEVEL
 
 First-time setup: docs/ENTRA-APP-SETUP.md
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
     }
 
     case "logout":
-      await clearCache(config.tokenCachePath);
+      await clearCache(openTokenEnv(config.envFilePath));
       process.stdout.write("Signed out (token cache cleared).\n");
       return;
 

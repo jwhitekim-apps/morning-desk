@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fabien Butz, MIT License (see LICENSE).
 import { LogLevel, PublicClientApplication } from "@azure/msal-node";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-node";
-import { fileCachePlugin } from "./token-cache";
+import { envCachePlugin, openTokenEnv } from "./token-cache";
 import { AppError } from "../graph/errors";
 import type { AppConfig } from "../config";
 import type { Logger } from "../lib/logger";
@@ -25,7 +25,7 @@ export function createPca(config: AppConfig, logger: Logger): PublicClientApplic
   }
   return new PublicClientApplication({
     auth: { clientId: config.clientId, authority: config.authority },
-    cache: { cachePlugin: fileCachePlugin(config.tokenCachePath) },
+    cache: { cachePlugin: envCachePlugin(openTokenEnv(config.envFilePath)) },
     system: {
       loggerOptions: {
         piiLoggingEnabled: false,

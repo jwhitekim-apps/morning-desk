@@ -32,7 +32,7 @@ export const task = (id: number, over: Record<string, unknown> = {}) => ({
 
 export function makeDir() {
   const dir = mkdtempSync(join(tmpdir(), "veloo-mcp-test-"));
-  return { dir, path: join(dir, "sub", "session.json"), cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  return { dir, path: join(dir, ".env.local"), cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
 /** 벨루를 흉내 낸다. 요청을 기록한다. 로그인(POST /login)의 기본 응답은 성공이다. */

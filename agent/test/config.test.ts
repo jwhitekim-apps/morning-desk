@@ -36,11 +36,24 @@ describe("loadConfig", () => {
   });
 
   it("each server gets only its own variables plus the base ones (least privilege)", () => {
-    expect(secretsOf("gmail")).toEqual(["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "HOME", "PATH"]);
-    expect(secretsOf("kakao")).toEqual(["HOME", "KAKAO_CLIENT_SECRET", "KAKAO_LINK_URL", "KAKAO_REFRESH_TOKEN", "KAKAO_REST_API_KEY", "PATH"]);
-    expect(secretsOf("github")).toEqual(["GITHUB_MCP_NOTIFICATIONS_TOKEN", "GITHUB_MCP_TOKEN", "HOME", "PATH"]);
-    expect(secretsOf("folio")).toEqual(["FOLIO_SUPABASE_KEY", "FOLIO_SUPABASE_URL", "HOME", "PATH"]);
-    expect(secretsOf("todo")).toEqual(["HOME", "MS_TODO_CLIENT_ID", "PATH"]);
+    expect(secretsOf("gmail")).toEqual(["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "HOME", "MY_TASK_ENV_FILE", "PATH"]);
+    expect(secretsOf("kakao")).toEqual(["HOME", "KAKAO_CLIENT_SECRET", "KAKAO_LINK_URL", "KAKAO_REST_API_KEY", "MY_TASK_ENV_FILE", "PATH"]);
+    expect(secretsOf("github")).toEqual(["GITHUB_MCP_NOTIFICATIONS_TOKEN", "GITHUB_MCP_TOKEN", "HOME", "MY_TASK_ENV_FILE", "PATH"]);
+    expect(secretsOf("folio")).toEqual(["FOLIO_SUPABASE_KEY", "FOLIO_SUPABASE_URL", "HOME", "MY_TASK_ENV_FILE", "PATH"]);
+    expect(secretsOf("todo")).toEqual(["HOME", "MS_TODO_CLIENT_ID", "MY_TASK_ENV_FILE", "PATH"]);
+  });
+
+  it("every server gets the root .env.local path, and no token value or token folder is passed", () => {
+    const withTokens = loadConfig(
+      { ...ENV, MS_TODO_TOKEN_CACHE: "/old", GMAIL_MCP_DIR: "/old", KAKAO_MCP_DIR: "/old", MS_TODO_TOKEN_CACHE_DATA: "tcache", GMAIL_REFRESH_TOKEN: "grefresh", VELOO_SESSION: "vsession" },
+      "/repo",
+    );
+    for (const n of Object.keys(withTokens.servers) as ServerName[]) {
+      const env = withTokens.servers[n].env;
+      expect(env.MY_TASK_ENV_FILE).toBe("/repo/.env.local");
+      expect(Object.keys(env)).not.toEqual(expect.arrayContaining(["MS_TODO_TOKEN_CACHE"]));
+      expect(JSON.stringify(env)).not.toMatch(/krefresh|tcache|grefresh|vsession|_MCP_DIR|\/old/);
+    }
   });
 
   it("no server ever sees another server's secret, the model key, or the admin database key", () => {
@@ -55,6 +68,6 @@ describe("loadConfig", () => {
 
   it("a variable that is not set is simply absent (no empty strings invented)", () => {
     const sparse = loadConfig({ PATH: "/usr/bin" }, "/repo");
-    expect(sparse.servers.kakao.env).toEqual({ PATH: "/usr/bin" });
+    expect(sparse.servers.kakao.env).toEqual({ PATH: "/usr/bin", MY_TASK_ENV_FILE: "/repo/.env.local" });
   });
 });

@@ -1,6 +1,5 @@
 // my-task original code (not derived from upstream).
-import { statSync } from "node:fs";
-import { dirname } from "node:path";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BASE, COOKIE, json, loginOk, makeDir, PASSWORD, setup, task, USERNAME, type Req } from "./helpers";
 
@@ -11,7 +10,9 @@ afterEach(() => { d.cleanup(); });
 const todos = (r: Req) => (r.path === "/todo/api/todos" ? json([task(1)]) : undefined);
 
 describe("login and session reuse", () => {
-  it("logs in once with the account, saves the session with folder 700 / file 600, and sends it as a cookie", async () => {
+  it("logs in once with the account, saves the session as the VELOO_SESSION line (file 600), and sends it as a cookie", async () => {
+    const other = "# 정리된 설정\nVELOO_BASE_URL=https://veloo.example.com\nKAKAO_REFRESH_TOKEN=kk\n";
+    writeFileSync(d.path, other, { mode: 0o600 });
     const s = setup(todos, { sessionPath: d.path });
     await s.api.listTasks();
     expect(s.logins()).toHaveLength(1);
@@ -19,7 +20,10 @@ describe("login and session reuse", () => {
     expect(JSON.parse(s.logins()[0]!.body)).toEqual({ username: USERNAME, password: PASSWORD });
     expect(s.gets()[0]!.headers.cookie).toBe(COOKIE);
     expect(statSync(d.path).mode & 0o777).toBe(0o600);
-    expect(statSync(dirname(d.path)).mode & 0o777).toBe(0o700);
+    const text = readFileSync(d.path, "utf-8");
+    expect(text.startsWith(other)).toBe(true);
+    expect(text.split("\n").filter((l) => l.startsWith("VELOO_SESSION="))).toEqual([`VELOO_SESSION=${COOKIE}`]);
+    expect(readdirSync(d.dir)).toEqual([".env.local"]);
   });
 
   it("the account is never sent with a data request, only with the login", async () => {
@@ -56,25 +60,26 @@ describe("expired session", () => {
   it("a 401 triggers exactly one new login and one retry, then returns the result", async () => {
     let n = 0;
     const s = setup((r) => (r.path === "/todo/api/todos" ? (++n === 1 ? json({ detail: "세션이 만료됐습니다." }, 401) : json([task(7)])) : undefined), { sessionPath: d.path });
-    s.store.write("access_token=OLD-SESSION");
+    await s.store.write("access_token=OLD-SESSION");
     const r = await s.api.listTasks();
     expect(r.items.map((t) => t.id)).toEqual([7]);
     expect(s.requests.map((q) => `${q.method} ${q.path}`)).toEqual(["GET /todo/api/todos", "POST /login", "GET /todo/api/todos"]);
     expect(s.gets()[0]!.headers.cookie).toBe("access_token=OLD-SESSION");
     expect(s.gets()[1]!.headers.cookie).toBe(COOKIE);
+    expect(await s.store.read()).toBe(COOKIE);
   });
 
   it("a redirect to the login page counts as an expired session too", async () => {
     let n = 0;
     const s = setup((r) => (r.path === "/todo/api/todos" ? (++n === 1 ? new Response(null, { status: 302, headers: { location: "/login" } }) : json([task(1)])) : undefined), { sessionPath: d.path });
-    s.store.write("access_token=OLD");
+    await s.store.write("access_token=OLD");
     await expect(s.api.listTasks()).resolves.toMatchObject({ items: [{ id: 1 }] });
     expect(s.logins()).toHaveLength(1);
   });
 
   it("if the retry after a new login is also rejected it gives up instead of looping", async () => {
     const s = setup((r) => (r.path === "/todo/api/todos" ? json({}, 401) : undefined), { sessionPath: d.path });
-    s.store.write("access_token=OLD-SESSION");
+    await s.store.write("access_token=OLD-SESSION");
     await expect(s.api.listTasks()).rejects.toMatchObject({ code: "auth_failed" });
     expect(s.logins()).toHaveLength(1);
     expect(s.gets()).toHaveLength(2);
@@ -173,10 +178,10 @@ describe("configuration and connectivity", () => {
 
   it("status reports configured and saved-session without any value", async () => {
     const s = setup(todos, { sessionPath: d.path });
-    expect(s.api.status()).toEqual({ configured: true, savedSession: false });
+    expect(await s.api.status()).toEqual({ configured: true, savedSession: false });
     await s.api.listTasks();
-    expect(s.api.status()).toEqual({ configured: true, savedSession: true });
-    expect(setup(todos, { sessionPath: d.path, password: undefined }).api.status().configured).toBe(false);
+    expect(await s.api.status()).toEqual({ configured: true, savedSession: true });
+    expect((await setup(todos, { sessionPath: d.path, password: undefined }).api.status()).configured).toBe(false);
     void loginOk;
   });
 });

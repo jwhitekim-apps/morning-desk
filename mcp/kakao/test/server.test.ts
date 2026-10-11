@@ -11,7 +11,7 @@ import pkg from "../package.json";
 
 async function connect(tools: Parameters<typeof createServer>[1]) {
   const lines: string[] = [];
-  const server = createServer({ logger: createLogger("debug", (l) => lines.push(l)), auth: { status: () => ({ restApiKey: false, clientSecret: false, refreshToken: "none" as const }) }, kakao: {} as never }, tools);
+  const server = createServer({ logger: createLogger("debug", (l) => lines.push(l)), auth: { status: async () => ({ restApiKey: false, clientSecret: false, refreshToken: false }) }, kakao: {} as never }, tools);
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test", version: "0.0.0" });
   await Promise.all([server.connect(serverSide), client.connect(clientSide)]);

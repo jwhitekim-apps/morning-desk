@@ -8,5 +8,5 @@ coverage/
 .idea/
 .vscode/
 
-# server-mcp 점검 대상(개인 서버 주소). 예시는 mcp/server/targets.example.json
-mcp/server/targets.json
+# 서버 점검 대상(개인 서버 주소). 예시는 sources/server/targets.example.json
+sources/server/targets.json

@@ -1,6 +1,6 @@
 // my-task original code (not derived from upstream).
 import { AppError } from "../errors";
-import type { Logger } from "../logger";
+import type { Logger } from "@morning-desk/shared";
 
 export type FetchFn = typeof fetch;
 

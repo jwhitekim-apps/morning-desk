@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { LlmClient, stripThinking, type ChatMessage, type FetchFn, type LlmConfig, type Model } from "../src/model/client";
 import { cleanTitle, interpret } from "../src/model/interpret";
 import { buildMessages, DATA_END, DATA_START, defang, type PromptInput } from "../src/model/prompt";
-import { createLogger } from "../src/logger";
+import { createLogger } from "@morning-desk/shared";
 
 const quiet = createLogger("silent");
 const CONFIG: LlmConfig = { baseUrl: "https://llm.example.com/v1", apiKey: "LLM-KEY-SECRET-0001", model: "qwen-test", firstCallTimeoutMs: 1000, timeoutMs: 500, allowPlaintext: false };

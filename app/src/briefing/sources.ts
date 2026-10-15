@@ -1,6 +1,5 @@
 // my-task original code (not derived from upstream).
-import { z } from "zod";
-import type { ToolCaller } from "../mcp/pool";
+import type { SourceModules } from "../modules";
 import { describeFailure, type SourceLabel } from "./failures";
 
 /** 모델에 넣을 메일. 본문은 상한이 있는 일부만 읽는다. */
@@ -65,43 +64,23 @@ export interface Collected {
 
 const DEFAULT_MAIL_QUERY = "in:inbox -category:promotions -category:social";
 
-const MailSearch = z.object({
-  items: z.array(
-    z.object({ id: z.string(), threadId: z.string(), subject: z.string(), from: z.string(), date: z.string(), snippet: z.string(), threadSubject: z.string().optional() }).passthrough(),
-  ),
-});
-const MailRead = z.object({ body: z.string(), truncated: z.boolean().optional() }).passthrough();
-const Items = <T extends z.ZodTypeAny>(item: T) => z.object({ items: z.array(item) }).passthrough();
-const Review = z.object({ repo: z.string(), number: z.number(), title: z.string(), url: z.string(), updatedAt: z.string() }).passthrough();
-const Assigned = z.object({ repo: z.string(), number: z.number(), title: z.string(), url: z.string(), updatedAt: z.string(), milestone: z.object({ dueDate: z.string().nullable() }).passthrough().nullable().optional() }).passthrough();
-const Notification = z.object({ id: z.string(), repo: z.string(), reason: z.string(), title: z.string(), url: z.string().nullable(), updatedAt: z.string() }).passthrough();
-const Papers = Items(z.object({ itemKey: z.string(), title: z.string(), syncedAt: z.string() }).passthrough());
-
-function parse<S extends z.ZodTypeAny>(schema: S, raw: unknown): z.infer<S> {
-  const r = schema.safeParse(raw);
-  if (!r.success) throw Object.assign(new Error("unexpected shape"), { shape: true });
-  return r.data;
-}
-
 async function settle<T>(source: SourceLabel, fn: () => Promise<T>, failures: string[], empty: T): Promise<T> {
   try {
     return await fn();
   } catch (err) {
-    // 응답 모양이 어긋난 것도 실패로 드러낸다(조용히 빈 목록으로 보지 않는다).
-    const shaped = (err as { shape?: boolean }).shape ? new Error("shape") : err;
-    failures.push(describeFailure(source, shaped));
+    failures.push(describeFailure(source, err));
     return empty;
   }
 }
 
-async function collectGmail(caller: ToolCaller, o: CollectOptions): Promise<MailItem[]> {
-  const found = parse(MailSearch, await caller.call("gmail", "search_emails", { query: o.mailQuery ?? DEFAULT_MAIL_QUERY, days: o.mailDays ?? 2, maxResults: o.mailMax ?? 30 }));
+async function collectGmail(gmail: SourceModules["gmail"], o: CollectOptions): Promise<MailItem[]> {
+  const found = await gmail.searchEmails({ query: o.mailQuery ?? DEFAULT_MAIL_QUERY, days: o.mailDays ?? 2, maxResults: o.mailMax ?? 30 });
   const done = o.processed?.mail ?? new Set<string>();
   const fresh: MailItem[] = found.items.filter((m) => !done.has(m.id)).map((m) => ({ id: m.id, threadId: m.threadId, subject: m.subject, from: m.from, date: m.date, snippet: m.snippet, ...(m.threadSubject ? { threadSubject: m.threadSubject } : {}) }));
   // 본문은 한도 안에서 앞쪽(최근) 메일부터 읽는다. 한 통의 본문을 읽지 못해도 나머지는 계속한다.
   for (const mail of fresh.slice(0, o.bodyMax ?? 10)) {
     try {
-      const read = parse(MailRead, await caller.call("gmail", "read_email", { id: mail.id }));
+      const read = await gmail.readEmail(mail.id);
       mail.body = read.body;
       if (read.truncated) mail.truncated = true;
     } catch {
@@ -111,45 +90,42 @@ async function collectGmail(caller: ToolCaller, o: CollectOptions): Promise<Mail
   return fresh;
 }
 
-async function collectGithub(caller: ToolCaller, o: CollectOptions, failures: string[]): Promise<GithubItem[]> {
+async function collectGithub(github: SourceModules["github"], o: CollectOptions, failures: string[]): Promise<GithubItem[]> {
   const out: GithubItem[] = [];
   const done = o.processed?.github ?? new Set<string>();
   const once = (item: GithubItem) => { if (!done.has(item.id)) out.push(item); };
   let failed: string | null = null;
   const attempt = async (fn: () => Promise<void>) => {
-    try { await fn(); } catch (err) { failed ??= describeFailure("GitHub", (err as { shape?: boolean }).shape ? new Error("shape") : err); }
+    try { await fn(); } catch (err) { failed ??= describeFailure("GitHub", err); }
   };
   await attempt(async () => {
-    for (const r of parse(Items(Review), await caller.call("github", "list_review_requests", {}))
-      .items) once({ kind: "review_request", repo: r.repo, id: `${r.repo}#${r.number}`, title: r.title, url: r.url, updatedAt: r.updatedAt });
+    for (const r of (await github.listReviewRequests()).items) once({ kind: "review_request", repo: r.repo, id: `${r.repo}#${r.number}`, title: r.title, url: r.url, updatedAt: r.updatedAt });
   });
   await attempt(async () => {
-    for (const a of parse(Items(Assigned), await caller.call("github", "list_assigned_items", {}))
-      .items) once({ kind: "assigned", repo: a.repo, id: `${a.repo}#${a.number}`, title: a.title, url: a.url, updatedAt: a.updatedAt, dueDate: a.milestone?.dueDate ?? null });
+    for (const a of (await github.listAssignedItems()).items) once({ kind: "assigned", repo: a.repo, id: `${a.repo}#${a.number}`, title: a.title, url: a.url, updatedAt: a.updatedAt, dueDate: a.milestone?.dueDate ?? null });
   });
   if (o.githubNotifications) {
     await attempt(async () => {
       // CI 알림(`ci_activity`)은 매일 수십 건씩 쌓이는 소음이라 제외한다.
-      for (const n of parse(Items(Notification), await caller.call("github", "list_notifications", {}))
-        .items.filter((x) => x.reason !== "ci_activity")) once({ kind: "notification", repo: n.repo, id: `notif:${n.id}`, title: n.title, url: n.url, updatedAt: n.updatedAt });
+      for (const n of (await github.listNotifications()).items.filter((x) => x.reason !== "ci_activity")) once({ kind: "notification", repo: n.repo, id: `notif:${n.id}`, title: n.title, url: n.url, updatedAt: n.updatedAt });
     });
   }
   if (failed) failures.push(failed);
   return out;
 }
 
-async function collectFolio(caller: ToolCaller, now: Date, o: CollectOptions): Promise<PaperItem[]> {
+async function collectFolio(folio: SourceModules["folio"], now: Date, o: CollectOptions): Promise<PaperItem[]> {
   const since = new Date(now.getTime() + 9 * 3600_000 - (o.paperDays ?? 7) * 86_400_000).toISOString().slice(0, 10);
-  const r = parse(Papers, await caller.call("folio", "list_recent_papers", { since, maxResults: 100 }));
+  const r = await folio.listRecentPapers({ since, maxResults: 100 });
   return r.items.map((p) => ({ itemKey: p.itemKey, title: p.title, syncedAt: p.syncedAt }));
 }
 
-/** 소스마다 정해진 도구를 부른다. 한 소스가 실패해도 나머지는 계속하고, 실패는 이유와 함께 돌려준다. */
-export async function collectSources(caller: ToolCaller, now: Date, o: CollectOptions = {}): Promise<Collected> {
+/** 소스마다 정해진 함수를 부른다. 한 소스가 실패해도 나머지는 계속하고, 실패는 이유와 함께 돌려준다. */
+export async function collectSources(modules: Pick<SourceModules, "gmail" | "github" | "folio">, now: Date, o: CollectOptions = {}): Promise<Collected> {
   const failures: string[] = [];
   const on = { gmail: true, github: true, folio: true, ...o.enabled };
-  const mails = on.gmail ? await settle("Gmail", () => collectGmail(caller, o), failures, [] as MailItem[]) : [];
-  const github = on.github ? await collectGithub(caller, o, failures) : [];
-  const papers = on.folio ? await settle("폴리오", () => collectFolio(caller, now, o), failures, [] as PaperItem[]) : [];
+  const mails = on.gmail ? await settle("Gmail", () => collectGmail(modules.gmail, o), failures, [] as MailItem[]) : [];
+  const github = on.github ? await collectGithub(modules.github, o, failures) : [];
+  const papers = on.folio ? await settle("폴리오", () => collectFolio(modules.folio, now, o), failures, [] as PaperItem[]) : [];
   return { sources: { mails, github, papers }, failures };
 }

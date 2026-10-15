@@ -1,7 +1,7 @@
 // my-task original code (not derived from upstream).
 import { chmod, copyFile, readdir, readFile, rmdir, stat, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { openEnvFile, type EnvFile } from "./env-file";
+import { openEnvFile, type EnvFile } from "@morning-desk/shared";
 
 const GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 

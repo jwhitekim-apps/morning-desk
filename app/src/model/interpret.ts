@@ -1,6 +1,6 @@
 // my-task original code (not derived from upstream).
 import { AppError } from "../errors";
-import type { Logger } from "../logger";
+import type { Logger } from "@morning-desk/shared";
 import type { Model } from "./client";
 import { buildMessages, dataItems, type DataItem, type PromptInput } from "./prompt";
 import { MAX_CANDIDATES, MAX_REMARK, ModelOutputSchema, type Candidate, type Sentence } from "./schema";

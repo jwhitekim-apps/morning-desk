@@ -2,8 +2,8 @@
 import { describe, expect, it } from "vitest";
 import type { Sources } from "../src/briefing/sources";
 import { applyWrites, findListId, planWrites } from "../src/briefing/writes";
-import { AppError } from "../src/errors";
-import type { ToolCaller } from "../src/mcp/pool";
+import { SourceError } from "@morning-desk/shared";
+import { fakeModules } from "./fakes";
 import type { AcceptedCandidate } from "../src/model/interpret";
 
 const SOURCES: Sources = {
@@ -64,19 +64,11 @@ describe("planWrites", () => {
 });
 
 function caller(over: { lists?: unknown; create?: (args: Record<string, unknown>) => unknown } = {}) {
-  const calls: { tool: string; args: Record<string, unknown> }[] = [];
-  const c: ToolCaller = {
-    async call(_s, tool, args = {}) {
-      calls.push({ tool, args });
-      if (tool === "list_task_lists") return over.lists ?? { items: [{ id: "A", displayName: "개인" }, { id: "B", displayName: "작업", wellknownListName: "defaultList" }] };
-      const out = over.create ? over.create(args) : { id: "n", title: args.title };
-      if (out instanceof Error) throw out;
-      return out;
-    },
-    async tools() { return []; },
-    async close() {},
-  };
-  return { caller: c, calls };
+  const fake = fakeModules((_s, tool, args) => {
+    if (tool === "listTaskLists") return over.lists ?? { items: [{ id: "A", displayName: "개인" }, { id: "B", displayName: "작업", wellknownListName: "defaultList" }] };
+    return over.create ? over.create(args) : { id: "n", title: args.title };
+  });
+  return { caller: fake.modules.todo, calls: fake.calls };
 }
 
 describe("findListId and applyWrites", () => {
@@ -87,12 +79,12 @@ describe("findListId and applyWrites", () => {
     await expect(findListId(caller({ lists: { items: [] } }).caller)).rejects.toMatchObject({ code: "config_error" });
   });
 
-  it("creates each planned task, counts the ones the server says already existed, and keeps going after a failure", async () => {
-    const { caller: cl, calls } = caller({ create: (a) => (a.title === "실패" ? new AppError("tool_error", "x", { toolCode: "rate_limited" }) : a.title === "있음" ? { id: "o", title: "있음", alreadyExisted: true } : { id: "n", title: a.title }) });
+  it("creates each planned task, counts the ones To Do says already existed, and keeps going after a failure", async () => {
+    const { caller: cl, calls } = caller({ create: (a) => (a.title === "실패" ? new SourceError("rate_limited", "x") : a.title === "있음" ? { id: "o", title: "있음", alreadyExisted: true } : { id: "n", title: a.title }) });
     const plan = planWrites([c("실패", "2026-10-21", "m3"), c("있음", "2026-10-22", "m3"), c("새것", null, "o/r#9")], SOURCES, []);
     const r = await applyWrites(cl, plan, "B");
     expect(r).toEqual({ created: [{ title: "새것", due: null, sourceIds: ["o/r#9"] }], existed: ["있음"], failed: [{ title: "실패", code: "rate_limited" }] });
-    expect(calls.filter((x) => x.tool === "create_task").map((x) => x.args)).toEqual([
+    expect(calls.filter((x) => x.tool === "createTask").map((x) => x.args)).toEqual([
       { listId: "B", title: "실패", body: "메일: 면담", dueDateTime: "2026-10-21" },
       { listId: "B", title: "있음", body: "메일: 면담", dueDateTime: "2026-10-22" },
       { listId: "B", title: "새것", body: "GitHub: https://github.com/o/r/issues/9\n마감 없음: 날짜가 적혀 있지 않았어요." },

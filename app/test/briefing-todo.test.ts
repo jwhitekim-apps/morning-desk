@@ -3,26 +3,18 @@ import { describe, expect, it } from "vitest";
 import { buildDeterministicBriefing } from "../src/briefing/deterministic";
 import { describeFailure } from "../src/briefing/failures";
 import { collectTodo, kstToday } from "../src/briefing/todo";
+import { SourceError } from "@morning-desk/shared";
 import { AppError } from "../src/errors";
-import type { ToolCaller } from "../src/mcp/pool";
+import { fakeModules } from "./fakes";
 
 const NOW = new Date("2026-10-11T22:00:00Z"); // 한국 시간 10/12 07:00 월요일
 
 const due = (title: string, dueDate: string, extra: Record<string, unknown> = {}) => ({ id: title, title, dueDate, listName: "작업", ...extra });
 
-/** To Do 서버를 흉내 낸다. 호출한 도구를 기록한다. */
+/** To Do 모듈을 흉내 낸다. 부른 함수를 기록한다. */
 function fakeCaller(answer: unknown | Error) {
-  const calls: { server: string; tool: string; args: unknown }[] = [];
-  const caller: ToolCaller = {
-    async call(server, tool, args) {
-      calls.push({ server, tool, args });
-      if (answer instanceof Error) throw answer;
-      return answer;
-    },
-    async tools() { return []; },
-    async close() {},
-  };
-  return { caller, calls };
+  const { modules, calls } = fakeModules(() => answer);
+  return { caller: modules.todo, calls };
 }
 
 describe("kstToday", () => {
@@ -37,7 +29,7 @@ describe("collectTodo", () => {
   it("asks To Do for today through seven days ahead, including overdue", async () => {
     const { caller, calls } = fakeCaller({ items: [] });
     await collectTodo(caller, NOW);
-    expect(calls).toEqual([{ server: "todo", tool: "list_tasks_due", args: { from: "2026-10-12", to: "2026-10-19", includeOverdue: true, maxResults: 200 } }]);
+    expect(calls).toEqual([{ server: "todo", tool: "listTasksDue", args: { from: "2026-10-12", to: "2026-10-19", includeOverdue: true, maxResults: 200 } }]);
   });
 
   it("sorts tasks into today, upcoming and overdue with day counts", async () => {
@@ -62,12 +54,6 @@ describe("collectTodo", () => {
     const t = await collectTodo(caller, NOW);
     expect(t.notes).toEqual(["마감 일정이 많아 일부만 표시했어요(12건 더 있음).", "시간대를 읽지 못한 태스크 2건은 빠졌어요."]);
     expect(t.failures).toEqual(["To Do 목록 '개인' 읽지 못함"]);
-  });
-
-  it("an answer in an unexpected shape is a contract error, not a silent empty day", async () => {
-    for (const bad of [{}, { items: "x" }, { items: [{ title: "t" }] }, { items: [{ title: "t", dueDate: "내일" }] }, null]) {
-      await expect(collectTodo(fakeCaller(bad).caller, NOW), JSON.stringify(bad)).rejects.toMatchObject({ code: "tool_error", toolCode: "contract_changed" });
-    }
   });
 });
 
@@ -100,10 +86,10 @@ describe("the model-free briefing", () => {
     expect(text).toContain("[임박]\n· 논문 송금(10/15·3일 후)\n· 다음 주 일(10/18·6일 후)");
   });
 
-  it("makes no model call: it only ever talks to the To Do server's list_tasks_due", async () => {
+  it("makes no model call: it only ever calls the To Do module's listTasksDue", async () => {
     const { caller, calls } = fakeCaller(ANSWER);
     await buildDeterministicBriefing(caller, NOW);
-    expect(calls.map((c) => `${c.server}.${c.tool}`)).toEqual(["todo.list_tasks_due"]);
+    expect(calls.map((c) => `${c.server}.${c.tool}`)).toEqual(["todo.listTasksDue"]);
   });
 
   it("every bubble fits the Kakao limit and there are at most three", async () => {
@@ -120,7 +106,7 @@ describe("the model-free briefing", () => {
   });
 
   it("when To Do cannot be read, a failure notice is built instead of a briefing", async () => {
-    const err = new AppError("tool_error", "x", { toolCode: "auth_expired" });
+    const err = new SourceError("auth_expired", "x");
     const { messages, input } = await buildDeterministicBriefing(fakeCaller(err).caller, NOW);
     expect(input.failures).toEqual(["To Do 로그인 만료"]);
     expect(messages.join("\n")).toContain("[⚠ 실패]\n· To Do 로그인 만료");
@@ -143,13 +129,13 @@ describe("the model-free briefing", () => {
 });
 
 describe("describeFailure", () => {
-  it("names the source and a short reason, never the server's own text", () => {
-    expect(describeFailure("Gmail", new AppError("tool_error", "gmail.search failed (auth_expired): 극비 문장", { toolCode: "auth_expired" }))).toBe("Gmail 로그인 만료");
-    expect(describeFailure("GitHub", new AppError("tool_error", "x", { toolCode: "rate_limited" }))).toBe("GitHub 요청 한도 초과");
+  it("names the source and a short reason from the module's error code, never the module's own text", () => {
+    expect(describeFailure("Gmail", new SourceError("auth_expired", "gmail.search failed: 극비 문장"))).toBe("Gmail 로그인 만료");
+    expect(describeFailure("GitHub", new SourceError("rate_limited", "x"))).toBe("GitHub 요청 한도 초과");
+    expect(describeFailure("To Do", new SourceError("graph_unavailable", "x"))).toBe("To Do 서버 일시 장애");
     expect(describeFailure("폴리오", new AppError("timeout", "x"))).toBe("폴리오 시간 초과");
-    expect(describeFailure("Gmail", new AppError("server_unavailable", "x"))).toBe("Gmail 연결 실패");
     expect(describeFailure("모델", new Error("secret 극비"))).toBe("모델 오류");
-    expect(describeFailure("Gmail", new AppError("tool_error", "x", { toolCode: "something_new" }))).toBe("Gmail 오류");
-    expect(describeFailure("Gmail", new AppError("tool_error", "극비 문장", { toolCode: "auth_expired" }))).not.toContain("극비");
+    expect(describeFailure("Gmail", new SourceError("something_new", "x"))).toBe("Gmail 오류");
+    expect(describeFailure("Gmail", new SourceError("auth_expired", "극비 문장"))).not.toContain("극비");
   });
 });

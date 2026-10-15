@@ -6,15 +6,15 @@ import { collectSources, type CollectOptions, type Sources } from "./briefing/so
 import { kstToday } from "./briefing/todo";
 import { pickTop } from "./briefing/top";
 import { applyWrites, DEFAULT_MAX_CREATES, findListId, planWrites, type WritePlan, type WriteResult } from "./briefing/writes";
-import type { Logger } from "./logger";
-import type { ToolCaller } from "./mcp/pool";
+import type { Logger } from "@morning-desk/shared";
+import type { SourceModules } from "./modules";
 import { emptyMemory, prune, type MemoryStore } from "./memory";
 import type { Model } from "./model/client";
 import { interpret, type Interpretation } from "./model/interpret";
-import { guard } from "./policy";
 
 export interface RunDeps {
-  caller: ToolCaller;
+  /** 하루 실행이 부를 수 있는 것은 이 모듈들의 함수뿐이다(로그인 함수는 받지 않는다). */
+  sources: SourceModules;
   /** 모델이 설정되지 않았으면 null(모델 없는 기본 브리핑이 나간다). */
   model: Model | null;
   /** 기록 저장소. null이면 기억 없이 돈다. */
@@ -55,7 +55,7 @@ const KOREAN_WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"];
  * 코드가 쓰기 결정(설정이 켜졌을 때만 추가) → 카톡 전송 → 기록 저장(드라이런은 저장하지 않음).
  */
 export async function run(deps: RunDeps, opts: RunOptions): Promise<RunResult> {
-  const caller = guard(deps.caller);
+  const { todo: todoSource, kakao } = deps.sources;
   const now = opts.now ?? new Date();
   const today = kstToday(now);
   const memory = prune(deps.memory?.load() ?? emptyMemory(), today);
@@ -66,12 +66,12 @@ export async function run(deps: RunDeps, opts: RunOptions): Promise<RunResult> {
   }
 
   const processed = { mail: new Set(Object.keys(memory.processed.mail)), github: new Set(Object.keys(memory.processed.github)) };
-  const { sources, failures: sourceFailures } = await collectSources(caller, now, { ...opts.collect, processed });
-  const { todo, failure: todoFailure } = await readTodo(caller, now);
+  const { sources, failures: sourceFailures } = await collectSources(deps.sources, now, { ...opts.collect, processed });
+  const { todo, failure: todoFailure } = await readTodo(todoSource, now);
   if (!todo) {
     // To Do를 못 읽으면 일을 판단할 기준이 없다: 실패 알림만 보낸다.
     const { messages } = compose({ now, todo: null, failures: [...sourceFailures, todoFailure ?? "To Do 오류"] });
-    const delivery = await deliver(caller, messages, { dryRun: opts.dryRun });
+    const delivery = await deliver(kakao, messages, { dryRun: opts.dryRun });
     return { status: opts.dryRun ? "dry-run" : "sent", messages, delivery, sources, failures: [...sourceFailures, todoFailure ?? "To Do 오류"] };
   }
 
@@ -106,7 +106,7 @@ export async function run(deps: RunDeps, opts: RunOptions): Promise<RunResult> {
     const willCreate = Boolean(opts.createTasks) && !opts.dryRun;
     if (willCreate && plan.toCreate.length > 0) {
       try {
-        writes = await applyWrites(caller, plan, await findListId(caller, opts.listName));
+        writes = await applyWrites(todoSource, plan, await findListId(todoSource, opts.listName));
       } catch (err) {
         failures.push(describeFailure("To Do", err));
       }
@@ -131,7 +131,7 @@ export async function run(deps: RunDeps, opts: RunOptions): Promise<RunResult> {
   const asked = new Set(Object.entries(memory.days).filter(([d]) => d < today).flatMap(([, r]) => r.questions.map(norm)));
   const remark = (interpretation?.remark ?? []).map((s) => s.text).filter((t) => !asked.has(norm(t)));
   const { messages } = compose({ now, todo, failures, created, uncertain, notes, remark });
-  const delivery = await deliver(caller, messages, { dryRun: opts.dryRun });
+  const delivery = await deliver(kakao, messages, { dryRun: opts.dryRun });
 
   if (!opts.dryRun && deps.memory) {
     const next = { ...memory, processed: { mail: { ...memory.processed.mail }, github: { ...memory.processed.github } }, days: { ...memory.days } };

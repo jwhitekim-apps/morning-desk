@@ -1,7 +1,7 @@
 // my-task original code (not derived from upstream).
-import { z } from "zod";
+import type { TodoSource } from "@morning-desk/microsoft-todo";
+import { SourceError } from "@morning-desk/shared";
 import { AppError } from "../errors";
-import type { ToolCaller } from "../mcp/pool";
 import type { AcceptedCandidate } from "../model/interpret";
 import type { Sources } from "./sources";
 
@@ -81,14 +81,9 @@ export function planWrites(candidates: readonly AcceptedCandidate[], sources: So
   return { toCreate: planned.slice(0, maxCreates), alreadyInTodo, overLimit: planned.slice(maxCreates).map((t) => t.title) };
 }
 
-const ListsAnswer = z.object({ items: z.array(z.object({ id: z.string(), displayName: z.string(), wellknownListName: z.string().optional() }).passthrough()) });
-const CreateAnswer = z.object({ id: z.string(), title: z.string(), alreadyExisted: z.boolean().optional() }).passthrough();
-
 /** 태스크를 넣을 목록: 설정한 이름이 있으면 그것, 없으면 기본 목록(`defaultList`). */
-export async function findListId(caller: ToolCaller, preferredName?: string): Promise<string> {
-  const parsed = ListsAnswer.safeParse(await caller.call("todo", "list_task_lists", {}));
-  if (!parsed.success) throw new AppError("tool_error", "To Do's list answer has an unexpected shape.", { toolCode: "contract_changed" });
-  const lists = parsed.data.items;
+export async function findListId(todo: TodoSource, preferredName?: string): Promise<string> {
+  const lists = (await todo.listTaskLists()).items;
   const chosen = (preferredName ? lists.find((l) => l.displayName === preferredName) : undefined) ?? lists.find((l) => l.wellknownListName === "defaultList");
   if (!chosen) throw new AppError("config_error", "Could not find the To Do list to add tasks to.");
   return chosen.id;
@@ -103,17 +98,15 @@ export interface WriteResult {
 }
 
 /** 계획한 태스크를 추가한다. 한 건이 실패해도 나머지는 계속하고 실패를 돌려준다. */
-export async function applyWrites(caller: ToolCaller, plan: WritePlan, listId: string): Promise<WriteResult> {
+export async function applyWrites(todo: TodoSource, plan: WritePlan, listId: string): Promise<WriteResult> {
   const result: WriteResult = { created: [], existed: [], failed: [] };
   for (const t of plan.toCreate) {
     try {
-      const raw = await caller.call("todo", "create_task", { listId, title: t.title, body: t.body, ...(t.due ? { dueDateTime: t.due } : {}) });
-      const r = CreateAnswer.safeParse(raw);
-      if (!r.success) throw new AppError("tool_error", "unexpected", { toolCode: "contract_changed" });
-      if (r.data.alreadyExisted) result.existed.push(t.title);
+      const r = await todo.createTask({ listId, title: t.title, body: t.body, ...(t.due ? { dueDateTime: t.due } : {}) });
+      if (r.alreadyExisted) result.existed.push(t.title);
       else result.created.push({ title: t.title, due: t.due, sourceIds: t.sourceIds });
     } catch (err) {
-      result.failed.push({ title: t.title, code: err instanceof AppError ? err.toolCode ?? err.code : "internal_error" });
+      result.failed.push({ title: t.title, code: err instanceof SourceError || err instanceof AppError ? err.code : "internal_error" });
     }
   }
   return result;

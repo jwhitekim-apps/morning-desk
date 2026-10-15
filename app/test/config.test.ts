@@ -1,11 +1,17 @@
 // my-task original code (not derived from upstream).
+import { loadConfig as folioConfig } from "@morning-desk/folio";
+import { loadConfig as githubConfig } from "@morning-desk/github";
+import { loadConfig as gmailConfig } from "@morning-desk/gmail";
+import { loadConfig as kakaoConfig } from "@morning-desk/kakao";
+import { loadConfig as todoConfig } from "@morning-desk/microsoft-todo";
 import { describe, expect, it } from "vitest";
-import { loadConfig, type ServerName } from "../src/config";
+import { loadConfig } from "../src/config";
 
 const ENV = {
   PATH: "/usr/bin",
   HOME: "/home/u",
   LOG_LEVEL: "debug",
+  MY_TASK_ENV_FILE: "/repo/.env.local",
   GMAIL_CLIENT_ID: "gid",
   GMAIL_CLIENT_SECRET: "gsecret",
   KAKAO_REST_API_KEY: "kkey",
@@ -17,57 +23,55 @@ const ENV = {
   FOLIO_SUPABASE_URL: "https://s",
   FOLIO_SUPABASE_KEY: "fkey",
   MS_TODO_CLIENT_ID: "msid",
+  MS_TODO_TOKEN_CACHE_DATA: "tcache",
+  GMAIL_REFRESH_TOKEN: "grefresh",
   LOCAL_LLM_API_KEY: "llmkey",
   SUPABASE_SERVICE_KEY: "admin-key",
   UNRELATED: "x",
 };
 
-describe("loadConfig", () => {
-  const config = loadConfig(ENV, "/repo");
-  const secretsOf = (name: ServerName) => Object.keys(config.servers[name].env).sort();
-
-  it("points each server at its built entry file", () => {
-    expect(config.servers.todo.entry).toBe("/repo/mcp/microsoft-todo/dist/index.js");
-    expect(config.servers.gmail.entry).toBe("/repo/mcp/gmail/dist/index.js");
-    expect(config.servers.kakao.entry).toBe("/repo/mcp/kakao/dist/index.js");
-    expect(config.servers.github.entry).toBe("/repo/mcp/github/dist/index.js");
-    expect(config.servers.folio.entry).toBe("/repo/mcp/folio/dist/index.js");
-    expect(config.logLevel).toBe("debug");
+describe("loadConfig (app)", () => {
+  it("reads the app's own settings with safe defaults", () => {
+    const c = loadConfig(ENV, "/repo");
+    expect(c.logLevel).toBe("debug");
+    expect(c.repoRoot).toBe("/repo");
+    expect(c.createTasks).toBe(false);
+    expect(c.maxCreates).toBe(10);
+    expect(c.sources).toEqual({ gmail: true, github: true, folio: true });
+    expect(c.githubNotifications).toBe(true);
+    expect(c.llm.apiKey).toBe("llmkey");
   });
+});
 
-  it("each server gets only its own variables plus the base ones (least privilege)", () => {
-    expect(secretsOf("gmail")).toEqual(["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "HOME", "MY_TASK_ENV_FILE", "PATH"]);
-    expect(secretsOf("kakao")).toEqual(["HOME", "KAKAO_CLIENT_SECRET", "KAKAO_LINK_URL", "KAKAO_REST_API_KEY", "MY_TASK_ENV_FILE", "PATH"]);
-    expect(secretsOf("github")).toEqual(["GITHUB_MCP_NOTIFICATIONS_TOKEN", "GITHUB_MCP_TOKEN", "HOME", "MY_TASK_ENV_FILE", "PATH"]);
-    expect(secretsOf("folio")).toEqual(["FOLIO_SUPABASE_KEY", "FOLIO_SUPABASE_URL", "HOME", "MY_TASK_ENV_FILE", "PATH"]);
-    expect(secretsOf("todo")).toEqual(["HOME", "MS_TODO_CLIENT_ID", "MY_TASK_ENV_FILE", "PATH"]);
-  });
+// 같은 프로세스라도 각 소스 모듈은 자기 설정만 받는다(최소 권한). 토큰 값은 설정이 아니라 `.env.local`의 자기 줄에서 모듈이 직접 읽는다.
+describe("each source's config holds only its own values", () => {
+  const configs = {
+    gmail: gmailConfig(ENV),
+    kakao: kakaoConfig(ENV),
+    github: githubConfig(ENV),
+    folio: folioConfig(ENV),
+    todo: todoConfig(ENV),
+  };
+  const own: Record<keyof typeof configs, RegExp> = {
+    gmail: /gsecret/,
+    kakao: /ksecret/,
+    github: /ghtoken/,
+    folio: /fkey/,
+    todo: /msid/,
+  };
+  const others = ["gsecret", "ksecret", "ghtoken", "ghnotif", "fkey", "msid", "llmkey", "admin-key", "krefresh", "tcache", "grefresh", "UNRELATED"];
 
-  it("every server gets the root .env.local path, and no token value or token folder is passed", () => {
-    const withTokens = loadConfig(
-      { ...ENV, MS_TODO_TOKEN_CACHE: "/old", GMAIL_MCP_DIR: "/old", KAKAO_MCP_DIR: "/old", MS_TODO_TOKEN_CACHE_DATA: "tcache", GMAIL_REFRESH_TOKEN: "grefresh", VELOO_SESSION: "vsession" },
-      "/repo",
-    );
-    for (const n of Object.keys(withTokens.servers) as ServerName[]) {
-      const env = withTokens.servers[n].env;
-      expect(env.MY_TASK_ENV_FILE).toBe("/repo/.env.local");
-      expect(Object.keys(env)).not.toEqual(expect.arrayContaining(["MS_TODO_TOKEN_CACHE"]));
-      expect(JSON.stringify(env)).not.toMatch(/krefresh|tcache|grefresh|vsession|_MCP_DIR|\/old/);
-    }
-  });
+  for (const [name, config] of Object.entries(configs) as [keyof typeof configs, object][]) {
+    it(`${name} sees its own settings and no other source's secret, the model key, a token value or the admin key`, () => {
+      const text = JSON.stringify(config);
+      expect(text).toMatch(own[name]);
+      for (const secret of others.filter((s) => !own[name].test(s) && !(name === "github" && s === "ghnotif"))) expect(text, `${name}: ${secret}`).not.toContain(secret);
+    });
+  }
 
-  it("no server ever sees another server's secret, the model key, or the admin database key", () => {
-    const all = (n: ServerName) => JSON.stringify(config.servers[n].env);
-    expect(all("gmail")).not.toMatch(/ksecret|krefresh|ghtoken|fkey|llmkey|admin-key/);
-    expect(all("kakao")).not.toMatch(/gsecret|ghtoken|fkey|llmkey|admin-key/);
-    expect(all("github")).not.toMatch(/gsecret|ksecret|fkey|llmkey|admin-key/);
-    expect(all("folio")).not.toMatch(/gsecret|ksecret|ghtoken|llmkey|admin-key/);
-    expect(all("todo")).not.toMatch(/gsecret|ksecret|ghtoken|fkey|llmkey|admin-key/);
-    for (const n of Object.keys(config.servers) as ServerName[]) expect(all(n)).not.toContain("UNRELATED");
-  });
-
-  it("a variable that is not set is simply absent (no empty strings invented)", () => {
-    const sparse = loadConfig({ PATH: "/usr/bin" }, "/repo");
-    expect(sparse.servers.kakao.env).toEqual({ PATH: "/usr/bin", MY_TASK_ENV_FILE: "/repo/.env.local" });
+  it("the token-writing sources write to the configured .env.local", () => {
+    expect(configs.gmail.envFilePath).toBe("/repo/.env.local");
+    expect(configs.kakao.envFilePath).toBe("/repo/.env.local");
+    expect(configs.todo.envFilePath).toBe("/repo/.env.local");
   });
 });

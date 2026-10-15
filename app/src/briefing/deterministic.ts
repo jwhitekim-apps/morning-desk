@@ -1,5 +1,5 @@
 // my-task original code (not derived from upstream).
-import type { ToolCaller } from "../mcp/pool";
+import type { TodoSource } from "@morning-desk/microsoft-todo";
 import { describeFailure } from "./failures";
 import { buildReport, type ReportInput } from "./report";
 import { collectTodo, type TodoSlice } from "./todo";
@@ -47,9 +47,9 @@ export function compose(c: ComposeInput): BriefingResult {
 }
 
 /** To Do를 읽어서 그 결과(또는 실패 문장)를 돌려준다. */
-export async function readTodo(caller: ToolCaller, now: Date): Promise<{ todo: TodoSlice | null; failure: string | null }> {
+export async function readTodo(todo: TodoSource, now: Date): Promise<{ todo: TodoSlice | null; failure: string | null }> {
   try {
-    return { todo: await collectTodo(caller, now), failure: null };
+    return { todo: await collectTodo(todo, now), failure: null };
   } catch (err) {
     return { todo: null, failure: describeFailure("To Do", err) };
   }
@@ -59,9 +59,9 @@ export async function readTodo(caller: ToolCaller, now: Date): Promise<{ todo: T
  * 모델 없이 To Do의 오늘·임박·밀린 일만으로 만든 기본 브리핑.
  * To Do를 읽지 못하면 브리핑 대신 실패 알림만 만든다(알림은 나가야 한다).
  */
-export async function buildDeterministicBriefing(caller: ToolCaller, now: Date, opts: { modelFailure?: string; failures?: string[] } = {}): Promise<BriefingResult> {
+export async function buildDeterministicBriefing(todoSource: TodoSource, now: Date, opts: { modelFailure?: string; failures?: string[] } = {}): Promise<BriefingResult> {
   // 실패 구역: 모델 실패, 읽지 못한 소스 순서로 위에서부터 적는다.
   const earlier = [...(opts.modelFailure ? [opts.modelFailure] : []), ...(opts.failures ?? [])];
-  const { todo, failure } = await readTodo(caller, now);
+  const { todo, failure } = await readTodo(todoSource, now);
   return compose({ now, todo, failures: failure ? [...earlier, failure] : earlier, notes: opts.modelFailure && todo ? ["모델 없이 만든 기본 브리핑이에요."] : [] });
 }

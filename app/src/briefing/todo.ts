@@ -1,7 +1,5 @@
 // my-task original code (not derived from upstream).
-import { z } from "zod";
-import { AppError } from "../errors";
-import type { ToolCaller } from "../mcp/pool";
+import type { TodoSource } from "@morning-desk/microsoft-todo";
 import { classifyOpenTasks, UPCOMING_DAYS, type ReportInput } from "./report";
 
 /** 한국 시간 기준 오늘 날짜(YYYY-MM-DD). */
@@ -13,21 +11,6 @@ const addDays = (ymd: string, days: number): string => {
   const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 };
-
-/** `list_tasks_due`가 돌려주는 모양에서 쓰는 부분만 확인한다. 어긋나면 조용히 해석하지 않고 오류로 올린다. */
-const DueResult = z.object({
-  items: z.array(
-    z.object({
-      title: z.string(),
-      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      body: z.object({ content: z.string() }).partial().optional(),
-    }).passthrough(),
-  ),
-  truncated: z.boolean().optional(),
-  omitted: z.number().optional(),
-  failedLists: z.array(z.object({ listName: z.string() }).passthrough()).optional(),
-  unconvertible: z.number().optional(),
-});
 
 export interface TodoSlice {
   tasksToday: ReportInput["tasksToday"];
@@ -42,14 +25,12 @@ export interface TodoSlice {
 }
 
 /** To Do에서 오늘·임박·밀린 일을 모은다. 모델은 쓰지 않는다. To Do 자체를 못 읽으면 예외가 그대로 올라간다. */
-export async function collectTodo(caller: ToolCaller, now: Date): Promise<TodoSlice> {
+export async function collectTodo(todo: TodoSource, now: Date): Promise<TodoSlice> {
   const today = kstToday(now);
-  const raw = await caller.call("todo", "list_tasks_due", { from: today, to: addDays(today, UPCOMING_DAYS), includeOverdue: true, maxResults: 200 });
-  const parsed = DueResult.safeParse(raw);
-  if (!parsed.success) throw new AppError("tool_error", "To Do's due-task answer has an unexpected shape.", { toolCode: "contract_changed" });
-  const due = parsed.data;
+  const due = await todo.listTasksDue({ from: today, to: addDays(today, UPCOMING_DAYS), includeOverdue: true, maxResults: 200 });
 
-  const tasks = due.items.map((t) => ({ name: t.title, memo: t.body?.content ?? "", deadline: t.dueDate, done: false }));
+  // 마감 범위로 찾은 태스크라 마감 날짜가 늘 있다. 혹시 없으면 범위 판단을 할 수 없으므로 뺀다.
+  const tasks = due.items.flatMap((t) => (t.dueDate ? [{ name: t.title, memo: t.body?.content ?? "", deadline: t.dueDate, done: false }] : []));
   const c = classifyOpenTasks(tasks, today);
 
   const notes: string[] = [];

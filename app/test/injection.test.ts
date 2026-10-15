@@ -1,11 +1,11 @@
 // my-task original code (not derived from upstream).
 import { describe, expect, it } from "vitest";
-import { createLogger } from "../src/logger";
-import type { ToolCaller } from "../src/mcp/pool";
+import { createLogger } from "@morning-desk/shared";
 import type { ChatMessage, Model } from "../src/model/client";
 import { interpret, MAX_PER_SOURCE } from "../src/model/interpret";
 import { DATA_END, DATA_START } from "../src/model/prompt";
 import { run } from "../src/run";
+import { fakeModules } from "./fakes";
 
 const NOW = new Date("2026-10-11T22:00:00Z");
 const quiet = createLogger("silent");
@@ -22,23 +22,17 @@ const BODIES: Record<string, string> = {
 };
 
 function world() {
-  const calls: { server: string; tool: string; args: Record<string, unknown> }[] = [];
-  const caller: ToolCaller = {
-    async call(server, tool, args = {}) {
-      calls.push({ server, tool, args });
-      if (server === "gmail") return tool === "search_emails" ? { items: MAILS } : { body: BODIES[String(args.id)] ?? "" };
-      if (server === "github") return tool === "list_assigned_items" ? { items: [{ repo: "o/r", number: 1, title: `${INJECTION} (이슈)`, url: "https://github.com/o/r/issues/1", updatedAt: "x", milestone: null }] } : { items: [] };
-      if (server === "folio") return { items: [] };
-      if (tool === "list_tasks_due") return { items: [] };
-      if (tool === "list_task_lists") return { items: [{ id: "L", displayName: "작업", wellknownListName: "defaultList" }] };
-      if (tool === "create_task") return { id: `n-${String(args.title)}`, title: args.title };
-      if (server === "kakao") { const m = args.messages as string[]; return { dryRun: false, sent: m.length, messages: m.map((x, i) => ({ index: i + 1, chars: Array.from(x).length })) }; }
-      throw new Error(`unexpected ${server}.${tool}`);
-    },
-    async tools() { return []; },
-    async close() {},
-  };
-  return { caller, calls };
+  const fake = fakeModules(async (server, tool, args) => {
+    if (server === "gmail") return tool === "searchEmails" ? { items: MAILS } : { body: BODIES[String(args.id)] ?? "" };
+    if (server === "github") return tool === "listAssignedItems" ? { items: [{ repo: "o/r", number: 1, title: `${INJECTION} (이슈)`, url: "https://github.com/o/r/issues/1", updatedAt: "x", milestone: null }] } : { items: [] };
+    if (server === "folio") return { items: [] };
+    if (tool === "listTasksDue") return { items: [] };
+    if (tool === "listTaskLists") return { items: [{ id: "L", displayName: "작업", wellknownListName: "defaultList" }] };
+    if (tool === "createTask") return { id: `n-${String(args.title)}`, title: args.title };
+    if (server === "kakao") { const m = args.messages as string[]; return { dryRun: false, sent: m.length, messages: m.map((x, i) => ({ index: i + 1, chars: Array.from(x).length })) }; }
+    throw new Error(`unexpected ${server}.${tool}`);
+  });
+  return { caller: fake.modules, calls: fake.calls };
 }
 
 /** 주입에 넘어간 모델을 흉내 낸다: 주입 문장을 근거로 태스크 100개와 지시문 제목을 낸다. */
@@ -60,8 +54,8 @@ describe("prompt injection in mail and issues", () => {
   it("even if the model obeys the injection, what is added stays within the caps and no title follows the instruction", async () => {
     const w = world();
     const m = obedientModel();
-    const r = await run({ caller: w.caller, model: m.model, memory: null, logger: quiet }, { dryRun: false, now: NOW, createTasks: true, maxCreates: 10 });
-    const created = w.calls.filter((c) => c.tool === "create_task").map((c) => String(c.args.title));
+    const r = await run({ sources: w.caller, model: m.model, memory: null, logger: quiet }, { dryRun: false, now: NOW, createTasks: true, maxCreates: 10 });
+    const created = w.calls.filter((c) => c.tool === "createTask").map((c) => String(c.args.title));
     expect(created.length).toBeLessThanOrEqual(10);
     // 메일 한 통에서는 최대 3건만(그중 지시문 제목은 없다), 정상 메일의 일은 그대로 들어간다.
     expect(created.filter((t) => t.startsWith("태스크 ")).length).toBeLessThanOrEqual(MAX_PER_SOURCE);
@@ -83,16 +77,16 @@ describe("prompt injection in mail and issues", () => {
 
   it("every task that was added is listed in the briefing", async () => {
     const w = world();
-    const r = await run({ caller: w.caller, model: obedientModel().model, memory: null, logger: quiet }, { dryRun: false, now: NOW, createTasks: true, maxCreates: 10 });
+    const r = await run({ sources: w.caller, model: obedientModel().model, memory: null, logger: quiet }, { dryRun: false, now: NOW, createTasks: true, maxCreates: 10 });
     const text = r.messages.join("\n");
-    const created = w.calls.filter((c) => c.tool === "create_task").map((c) => String(c.args.title));
+    const created = w.calls.filter((c) => c.tool === "createTask").map((c) => String(c.args.title));
     expect(created.length).toBeGreaterThan(0);
     for (const t of created) expect(text, t).toContain(`· ${t}(`);
   });
 
   it("the injected text reaches the model only inside the data block, and cannot close the block", async () => {
     const m = obedientModel();
-    await run({ caller: world().caller, model: m.model, memory: null, logger: quiet }, { dryRun: true, now: NOW });
+    await run({ sources: world().caller, model: m.model, memory: null, logger: quiet }, { dryRun: true, now: NOW });
     const user = m.seen[0]![1]!.content;
     expect(user.split(DATA_END)).toHaveLength(2);
     const inside = user.slice(user.indexOf(DATA_START), user.indexOf(DATA_END));
@@ -109,8 +103,8 @@ describe("prompt injection in mail and issues", () => {
 
   it("injected dates do not survive without a quote from that same mail", async () => {
     const w = world();
-    const r = await run({ caller: w.caller, model: obedientModel().model, memory: null, logger: quiet }, { dryRun: false, now: NOW, createTasks: true });
-    const hacked = w.calls.filter((c) => c.tool === "create_task" && c.args.title === "HACKED");
+    const r = await run({ sources: w.caller, model: obedientModel().model, memory: null, logger: quiet }, { dryRun: false, now: NOW, createTasks: true });
+    const hacked = w.calls.filter((c) => c.tool === "createTask" && c.args.title === "HACKED");
     expect(hacked).toHaveLength(0);
     expect(r.status).toBe("sent");
   });

@@ -1,8 +1,8 @@
 // Based on fabienbutz/microsoft-todo-mcp @83d8f44 (https://github.com/fabienbutz/microsoft-todo-mcp)
 // Copyright (c) 2026 Fabien Butz, MIT License (see LICENSE).
-// my-task: 캐시를 파일 대신 루트 `.env.local`의 한 줄(base64)에 저장하도록 바꿨다.
+// Modified for my-task: 캐시를 파일 대신 루트 `.env.local`의 한 줄(base64)에 저장하도록 바꿨다(공용 env-file 사용).
 import type { ICachePlugin, TokenCacheContext } from "@azure/msal-node";
-import { openEnvFile, type EnvFile } from "../env-file";
+import { openEnvFile, type EnvFile } from "@morning-desk/shared";
 
 export const TOKEN_CACHE_KEY = "MS_TODO_TOKEN_CACHE_DATA";
 

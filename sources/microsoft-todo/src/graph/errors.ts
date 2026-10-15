@@ -1,5 +1,9 @@
 // Based on fabienbutz/microsoft-todo-mcp @83d8f44 (https://github.com/fabienbutz/microsoft-todo-mcp)
 // Copyright (c) 2026 Fabien Butz, MIT License (see LICENSE).
+// Modified for my-task: AppError extends the shared SourceError (so the app reads any source's error code the same way);
+// the 401 hint names the app's login command.
+import { SourceError } from "@morning-desk/shared";
+
 /** Stable, machine-readable error taxonomy. The `code` is what callers (and LLMs) branch on. */
 export type ErrorCode =
   | "auth_required"
@@ -24,26 +28,20 @@ export interface AppErrorJSON {
   details?: unknown;
 }
 
-export class AppError extends Error {
-  readonly code: ErrorCode;
+export class AppError extends SourceError<ErrorCode> {
   readonly requestId?: string;
   readonly clientRequestId?: string;
-  readonly retryAfterSeconds?: number;
-  readonly status?: number;
   readonly details?: unknown;
 
   constructor(code: ErrorCode, message: string, extra: Omit<Partial<AppErrorJSON>, "code" | "message"> = {}) {
-    super(message);
+    super(code, message, { status: extra.status, retryAfterSeconds: extra.retryAfterSeconds });
     this.name = "AppError";
-    this.code = code;
     this.requestId = extra.requestId;
     this.clientRequestId = extra.clientRequestId;
-    this.retryAfterSeconds = extra.retryAfterSeconds;
-    this.status = extra.status;
     this.details = extra.details;
   }
 
-  toJSON(): AppErrorJSON {
+  override toJSON(): AppErrorJSON {
     const out: AppErrorJSON = { code: this.code, message: this.message };
     if (this.requestId) out.requestId = this.requestId;
     if (this.clientRequestId) out.clientRequestId = this.clientRequestId;
@@ -74,7 +72,7 @@ export function mapGraphError(status: number, body: unknown, headers: Headers): 
 
   switch (status) {
     case 401:
-      return new AppError("auth_expired", "Microsoft rejected the access token (401). Run `microsoft-todo-mcp login` again.", base);
+      return new AppError("auth_expired", "Microsoft rejected the access token (401). Run `morning-desk login todo` again.", base);
     case 403:
       return new AppError("permission_denied", message, base);
     case 404:

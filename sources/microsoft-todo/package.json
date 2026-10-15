@@ -1,44 +1,20 @@
 {
-  "name": "my-task-todo-mcp",
+  "name": "@morning-desk/microsoft-todo",
   "version": "0.0.1",
-  "description": "Microsoft To Do MCP server for my-task (read and create only). Based on fabienbutz/microsoft-todo-mcp (MIT).",
+  "description": "Microsoft To Do source module for morning-desk (read and create only). Based on fabienbutz/microsoft-todo-mcp (MIT).",
+  "private": true,
   "type": "module",
   "license": "MIT",
   "author": "jwhitekim",
-  "bin": {
-    "my-task-todo-mcp": "dist/index.js"
-  },
-  "files": [
-    "dist",
-    "docs",
-    "README.md",
-    "LICENSE"
-  ],
-  "engines": {
-    "node": ">=20"
-  },
+  "exports": "./src/index.ts",
+  "types": "./src/index.ts",
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "prepare": "npm run build"
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@azure/msal-node": "^2.16.0",
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@morning-desk/shared": "0.0.1",
     "zod": "^3.23.8"
-  },
-  "devDependencies": {
-    "@types/node": "^20.14.0",
-    "eslint": "^9.17.0",
-    "fast-check": "^3.23.0",
-    "tsup": "^8.3.5",
-    "typescript": "^5.7.2",
-    "typescript-eslint": "^8.18.0",
-    "vitest": "^2.1.8"
-  },
-  "private": true
+  }
 }

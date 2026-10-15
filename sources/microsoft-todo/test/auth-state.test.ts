@@ -1,5 +1,7 @@
 // Based on fabienbutz/microsoft-todo-mcp @83d8f44 (https://github.com/fabienbutz/microsoft-todo-mcp)
 // Copyright (c) 2026 Fabien Butz, MIT License (see LICENSE).
+// Modified for my-task: a run never starts a device-code sign-in; a missing or dead session is `auth_required`/`auth_expired`
+// with the `morning-desk login todo` hint.
 import { describe, expect, it } from "vitest";
 import { AuthManager } from "../src/auth/auth-state";
 import { createLogger } from "../src/lib/logger";
@@ -41,8 +43,6 @@ function fakePca(
   } as any;
 }
 
-const tick = (ms = 5) => new Promise((r) => setTimeout(r, ms));
-
 describe("AuthManager", () => {
   it("starts uninitialized with no cached account", async () => {
     const auth = new AuthManager(fakePca(), ["Tasks.ReadWrite"], silent);
@@ -51,41 +51,14 @@ describe("AuthManager", () => {
     expect(auth.hasAccount()).toBe(false);
   });
 
-  it("getAccessToken with no account starts a device-code sign-in and reports the code", async () => {
-    const auth = new AuthManager(fakePca(), ["Tasks.ReadWrite"], silent);
-    await auth.init();
-    await expect(auth.getAccessToken()).rejects.toMatchObject({
-      code: "auth_required",
-      details: { userCode: "ABCD-EFGH", verificationUri: "https://microsoft.com/devicelogin", status: "started" },
-    });
-    expect(auth.status().state).toBe("device_code_pending");
-    expect(auth.status().pendingSignIn?.userCode).toBe("ABCD-EFGH");
-  });
-
-  it("a second getAccessToken while a sign-in is pending reports it pending, without starting a new flow", async () => {
+  it("getAccessToken with no account does not start a sign-in: auth_required with the login command", async () => {
     let deviceCodeCalls = 0;
     const auth = new AuthManager(fakePca({ onDeviceCodeCall: () => { deviceCodeCalls += 1; } }), ["Tasks.ReadWrite"], silent);
     await auth.init();
-    await expect(auth.getAccessToken()).rejects.toMatchObject({ details: { status: "started" } });
-    await expect(auth.getAccessToken()).rejects.toMatchObject({ details: { status: "pending", userCode: "ABCD-EFGH" } });
-    expect(deviceCodeCalls).toBe(1);
-  });
-
-  it("signIn returns the device code; once the background poll resolves, getAccessToken returns the token", async () => {
-    const account: FakeAccount = { username: "u@example.com", name: "U", homeAccountId: "home-1", tenantId: "tenant-1" };
-    const auth = new AuthManager(
-      fakePca({ deviceCodeResult: async () => ({ accessToken: "tok-device", account, expiresOn: new Date(Date.now() + 3_600_000) }) }),
-      ["Tasks.ReadWrite"],
-      silent,
-    );
-    await auth.init();
-    const code = await auth.signIn();
-    expect(code.userCode).toBe("ABCD-EFGH");
-    expect(auth.status().state).toBe("device_code_pending");
-    await tick();
-    expect(await auth.getAccessToken()).toBe("tok-device");
-    expect(auth.status().state).toBe("authenticated");
-    expect(auth.accountId()).toBe("home-1");
+    await expect(auth.getAccessToken()).rejects.toMatchObject({ code: "auth_required", message: expect.stringContaining("morning-desk login todo") });
+    await expect(auth.getAccessToken()).rejects.toMatchObject({ code: "auth_required" });
+    expect(deviceCodeCalls).toBe(0);
+    expect(auth.status().state).toBe("uninitialized");
   });
 
   it("authenticates via a silent token when a cached account exists", async () => {
@@ -118,16 +91,18 @@ describe("AuthManager", () => {
     expect(calls).toBe(1);
   });
 
-  it("when the silent refresh fails, falls back to a device-code sign-in", async () => {
+  it("when the silent refresh fails, reports auth_expired with the login command and does not start a sign-in", async () => {
+    let deviceCodeCalls = 0;
     const account: FakeAccount = { username: "u@example.com", homeAccountId: "home-1", tenantId: "tenant-1" };
     const auth = new AuthManager(
-      fakePca({ accounts: [account], silentResult: async () => { throw new Error("interaction_required"); } }),
+      fakePca({ accounts: [account], silentResult: async () => { throw new Error("interaction_required"); }, onDeviceCodeCall: () => { deviceCodeCalls += 1; } }),
       ["Tasks.ReadWrite"],
       silent,
     );
     await auth.init();
-    await expect(auth.getAccessToken()).rejects.toMatchObject({ code: "auth_required", details: { userCode: "ABCD-EFGH" } });
-    expect(auth.status().state).toBe("device_code_pending");
+    await expect(auth.getAccessToken()).rejects.toMatchObject({ code: "auth_expired", message: expect.stringContaining("morning-desk login todo") });
+    expect(auth.status().state).toBe("refresh_failed");
+    expect(deviceCodeCalls).toBe(0);
   });
 
   it("reports config_error and never signs in when constructed without a client id", async () => {
@@ -135,6 +110,5 @@ describe("AuthManager", () => {
     await auth.init();
     expect(auth.status()).toMatchObject({ state: "uninitialized", configError: "no client id configured" });
     await expect(auth.getAccessToken()).rejects.toMatchObject({ code: "config_error" });
-    await expect(auth.signIn()).rejects.toMatchObject({ code: "config_error" });
   });
 });

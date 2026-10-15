@@ -4,6 +4,15 @@
 
 ## 미출시 (0.0.1 이후)
 
+### MCP 서버 층 제거, 모듈로 전환 (2026-10-15, `openspec/changes/sources-as-modules`)
+- 폴더를 `mcp/microsoft-todo/`에서 `sources/microsoft-todo/`로 옮기고, 패키지 이름을 `@morning-desk/microsoft-todo`로 바꿨습니다(저장소 루트의 npm workspace, 따로 빌드하지 않음).
+- **제거**: MCP 서버와 CLI(`src/server.ts`, `src/index.ts`의 `serve`·`login`·`logout`·`whoami`), 도구 층 전체(`src/tools/`: 도구 정의, 레지스트리, `sign_in`·`auth_status` 도구, `withIdempotency`), `@modelcontextprotocol/sdk` 의존성, 패키지별 `package-lock.json`·`eslint.config.js`·`tsup.config.ts`, `src/env-file.ts`(공용 `@morning-desk/shared`로), `test/registry.test.ts`, `test/env-file*.test.ts`(공용 패키지로 옮김).
+- **제거**: 도구를 숨기던 실행 설정 `--readonly`, `--no-destructive`, `MS_TODO_READONLY`, `MS_TODO_NO_DESTRUCTIVE`(`src/config.ts`). 수정·삭제 함수가 처음부터 없어서 숨길 대상이 없습니다. 읽기 권한만 요청하는 `MS_TODO_SCOPE_READONLY`는 그대로입니다.
+- **추가**: `src/index.ts`(새로 작성) — `createTodoSource(config)`가 `listTaskLists`, `listTasks`, `getTask`, `listTasksDue`, `createTask`만 담은 객체를 돌려줍니다. 도구 입력 모양이 하던 검사(빈 제목, 일시 형식, 결과 상한)와 같은 실행 안의 재시도 보호(메모리 캐시 60초)를 이 함수들 안으로 옮겼습니다. 로그인용은 `todoAuth`(`login`, `logout`, `whoami`)로 따로 내보냅니다. `test/allowlist.test.ts`가 함수 목록, 숨김 설정이 없음, 입력 검사, 읽기 전용 권한을 확인합니다.
+- **변경**: `src/auth/auth-state.ts` — 토큰이 없거나 갱신이 실패하면 기기 코드 로그인을 스스로 시작하던 동작을 없앴습니다. 이제 `auth_required`(로그인 안 됨) 또는 `auth_expired`(세션 끊김)와 `morning-desk login todo` 안내를 던집니다. 정해진 시각에 도는 앱에서는 아무도 보지 않는 로그인이 시작되기 때문입니다. 대기 중 로그인 상태(`device_code_pending`)와 `signIn()`도 함께 없앴습니다.
+- **변경**: `src/graph/errors.ts` — `AppError`가 공용 `SourceError`를 이어받고, 401 안내 문구가 앱의 로그인 명령을 가리킵니다. `src/config.ts`, `src/auth/token-cache.ts` — 공용 env-file을 씁니다.
+- 로거(`src/lib/logger.ts`)는 원본 그대로 둡니다(값을 가리는 방식이라 공용 로거와 필드 규칙이 다릅니다).
+
 ### 추가
 - `list_tasks_due` 도구(읽기): 모든 목록의 미완료 태스크를 한국 날짜 범위로 모아 마감 순으로 돌려줍니다. 밀린 일 포함 옵션, 한도(기본 200, 최대 1000)와 잘림 표시, 목록 동시 조회 4개 제한, 실패한 목록 표시. `src/todo/due.ts`.
 - `src/lib/kst.ts`: 한국 표준시 변환(날짜만 → 한국 자정, 시간대 없는 일시 → 한국 시간, 응답의 UTC → 한국 시간). 속성 기반 테스트 포함.

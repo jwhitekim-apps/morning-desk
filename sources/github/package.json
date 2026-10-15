@@ -1,0 +1,18 @@
+{
+  "name": "@morning-desk/github",
+  "version": "0.0.1",
+  "description": "Read-only GitHub source module (review requests, assigned items, notifications) for morning-desk.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "jwhitekim",
+  "exports": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@morning-desk/shared": "0.0.1"
+  }
+}

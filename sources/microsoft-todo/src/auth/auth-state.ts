@@ -1,37 +1,32 @@
 // Based on fabienbutz/microsoft-todo-mcp @83d8f44 (https://github.com/fabienbutz/microsoft-todo-mcp)
 // Copyright (c) 2026 Fabien Butz, MIT License (see LICENSE).
+// Modified for my-task: no device-code sign-in during a run. A missing or dead session throws `auth_required`
+// pointing at the `morning-desk login todo` command, which is the only place that starts a device-code sign-in
+// (`todoAuth.login` in src/index.ts). The `sign_in` tool, the pending-sign-in state and `signIn()` were removed.
 import type { AccountInfo, PublicClientApplication } from "@azure/msal-node";
-import { acquireByDeviceCode, type DeviceCodeInfo } from "./device-code";
 import { AppError } from "../graph/errors";
 import type { TokenProvider } from "../graph/client";
 import type { Logger } from "../lib/logger";
 
 /**
- * Auth for the running server. Two ways in:
+ * Auth for the running app:
  *  - a cached account → silent refresh on demand;
- *  - no account → a device-code sign-in, kicked off automatically by the first tool call that
- *    needs a token (or explicitly via the `sign_in` tool / the `login` CLI command). The poll
- *    runs in the background; the user enters a short code at a URL; the next tool call picks up
- *    the token.
+ *  - no account, or the silent refresh fails → `auth_required` with the login command. Nothing interactive starts here.
  *
- *   uninitialized ─┬─ init w/ cached account ─▶ token_expired ─ silent refresh ok ─▶ authenticated
- *                  └─ sign_in / first tool call ─▶ device_code_pending ─ user completes ─▶ authenticated
- *                                 (silent refresh fails / device code expires → back to start)
+ *   uninitialized ─ init w/ cached account ─▶ token_expired ─ silent refresh ok ─▶ authenticated
+ *                                              (silent refresh fails → refresh_failed)
  */
-export type AuthState = "uninitialized" | "token_expired" | "device_code_pending" | "authenticated" | "refresh_failed";
-
-interface PendingSignIn extends DeviceCodeInfo {
-  /** Epoch ms at which the device code expires. */
-  expiresAt: number;
-}
+export type AuthState = "uninitialized" | "token_expired" | "authenticated" | "refresh_failed";
 
 export interface AuthStatus {
   state: AuthState;
   account?: { username: string; name?: string; homeAccountId: string; tenantId: string };
   tokenExpiresOn?: string;
   configError?: string;
-  pendingSignIn?: { verificationUri: string; userCode: string; expiresInSeconds: number };
 }
+
+/** What to tell the owner when a sign-in is needed. */
+export const LOGIN_HINT = "Run `morning-desk login todo` in a terminal to sign in.";
 
 const TOKEN_SKEW_MS = 60_000;
 
@@ -40,7 +35,6 @@ export class AuthManager implements TokenProvider {
   private account: AccountInfo | null = null;
   private token: { value: string; expiresOn: Date } | null = null;
   private refreshing: Promise<string> | null = null;
-  private pendingSignIn: PendingSignIn | null = null;
 
   constructor(
     private readonly pca: PublicClientApplication | null,
@@ -67,7 +61,6 @@ export class AuthManager implements TokenProvider {
     if (this.configError) out.configError = this.configError;
     if (this.account) out.account = { username: this.account.username, name: this.account.name, homeAccountId: this.account.homeAccountId, tenantId: this.account.tenantId };
     if (this.token) out.tokenExpiresOn = this.token.expiresOn.toISOString();
-    if (this.activePending()) out.pendingSignIn = this.codeInfo();
     return out;
   }
 
@@ -77,44 +70,6 @@ export class AuthManager implements TokenProvider {
 
   hasAccount(): boolean {
     return this.account != null;
-  }
-
-  private activePending(): boolean {
-    return this.pendingSignIn != null && this.pendingSignIn.expiresAt > this.now();
-  }
-
-  private codeInfo(): { verificationUri: string; userCode: string; expiresInSeconds: number } {
-    const p = this.pendingSignIn!;
-    return { verificationUri: p.verificationUri, userCode: p.userCode, expiresInSeconds: Math.max(0, Math.round((p.expiresAt - this.now()) / 1000)) };
-  }
-
-  /** Begin (or reuse) a device-code sign-in. Resolves once the code is known; the poll runs in the background. */
-  async signIn(): Promise<{ verificationUri: string; userCode: string; expiresInSeconds: number }> {
-    if (this.configError || !this.pca) {
-      throw new AppError("config_error", this.configError ?? "No Microsoft Entra client ID configured.");
-    }
-    if (this.activePending()) return this.codeInfo();
-
-    const pca = this.pca;
-    return new Promise((resolve, reject) => {
-      const onCode = (info: DeviceCodeInfo) => {
-        this.pendingSignIn = { ...info, expiresAt: this.now() + info.expiresIn * 1000 };
-        this.state = "device_code_pending";
-        resolve({ verificationUri: info.verificationUri, userCode: info.userCode, expiresInSeconds: info.expiresIn });
-      };
-      void acquireByDeviceCode(pca, this.scopes, onCode)
-        .then((result) => {
-          const account = result.account;
-          if (!account || !result.accessToken) throw new Error("device-code result was incomplete");
-          this.adopt(account, result.accessToken, result.expiresOn);
-        })
-        .catch((err) => {
-          this.pendingSignIn = null;
-          this.state = this.account ? "token_expired" : "uninitialized";
-          this.logger.warn("device-code sign-in did not complete", { error: (err as Error).message });
-          reject(err instanceof AppError ? err : new AppError("auth_required", `Sign-in did not complete: ${(err as Error).message}`));
-        });
-    });
   }
 
   async getAccessToken(): Promise<string> {
@@ -132,18 +87,14 @@ export class AuthManager implements TokenProvider {
         });
         return await this.refreshing;
       } catch (err) {
-        // The cached session is dead — fall through to a fresh device-code sign-in.
+        // The cached session is dead. Do not start a sign-in here: nobody is watching a scheduled run.
         this.account = null;
         this.state = "refresh_failed";
         this.logger.warn("silent refresh failed — a new sign-in is needed", { error: (err as Error).message });
+        throw new AppError("auth_expired", `The saved Microsoft sign-in is no longer valid. ${LOGIN_HINT}`);
       }
     }
-    if (this.activePending()) {
-      const c = this.codeInfo();
-      throw new AppError("auth_required", `Sign-in pending — open ${c.verificationUri} and enter the code ${c.userCode}, then retry.`, { details: { ...c, status: "pending" } });
-    }
-    const code = await this.signIn();
-    throw new AppError("auth_required", `To sign in, open ${code.verificationUri} and enter the code ${code.userCode}, then retry your request.`, { details: { ...code, status: "started" } });
+    throw new AppError("auth_required", `Not signed in to Microsoft To Do. ${LOGIN_HINT}`);
   }
 
   private async refreshSilently(pca: PublicClientApplication, account: AccountInfo): Promise<string> {
@@ -153,11 +104,10 @@ export class AuthManager implements TokenProvider {
     return result.accessToken;
   }
 
-  /** Adopt a freshly acquired token (silent refresh or device-code sign-in). */
+  /** Adopt a freshly acquired token (silent refresh). */
   adopt(account: AccountInfo, accessToken: string, expiresOn: Date | null): void {
     this.account = account;
     this.token = { value: accessToken, expiresOn: expiresOn ?? new Date(this.now() + 3_600_000) };
     this.state = "authenticated";
-    this.pendingSignIn = null;
   }
 }

@@ -1,0 +1,19 @@
+{
+  "name": "@morning-desk/server",
+  "version": "0.0.1",
+  "description": "Read-only home-server and school-LLM check module for morning-desk.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "jwhitekim",
+  "exports": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@morning-desk/shared": "0.0.1",
+    "zod": "^3.23.8"
+  }
+}

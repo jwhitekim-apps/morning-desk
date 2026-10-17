@@ -30,6 +30,8 @@ npm run typecheck && npm run lint && npm test && npm run build
 node app/dist/index.js --help
 ```
 
+GitHub Actions가 `main` 푸시와 풀 리퀘스트에서 `typecheck`, `lint`, `test`, `build` 네 가지를 Node 20에서 돌립니다. 모의 서비스만 쓰므로 실제 계정 호출과 집 서버 환경은 검증하지 않습니다.
+
 명령과 설정은 [`app/README.md`](app/README.md), 소스별 설정은 각 모듈의 README를 봅니다. 비밀값과 토큰은 저장소 루트의 `.env.local`(권한 600, git 제외)에만 둡니다.
 
 ## 현재 상태

@@ -5,14 +5,14 @@ Human-facing overview: `README.md`. Plans and specs: `openspec/` (Korean).
 
 ## What this is
 
-A personal secretary application. The only place the owner types tasks is **Microsoft To Do**. Everything else (Gmail, GitHub, Folio papers) is a **source the app reads** to detect schedules and to-dos. Each source is a small **module** under `sources/` that the app imports and calls in the same process (no MCP, no child processes). The app (`app/`) runs once a day on the owner's home server, reads the sources, asks the local LLM for candidates, adds tasks to To Do by code-decided rules, and sends a morning briefing through **KakaoTalk "send to me"** (send-only: Kakao cannot be read).
+A personal secretary application. The only place the owner types tasks is **Microsoft To Do**. Everything else (Gmail, GitHub, Folio papers) is a **source the app reads** to detect schedules and to-dos. Each source is a small **module** under `sources/` that the app imports and calls in the same process (no MCP, no child processes). The app (`app/`) runs once a day (default 12:00, cron) on the owner's home server, reads the sources, asks the local LLM for candidates, adds tasks to To Do by code-decided rules, and sends a daily briefing through **KakaoTalk "send to me"** (send-only: Kakao cannot be read).
 
 ```
 app/                       the application (CLI `morning-desk`: run, login, logout, auth-status, migrate-tokens)
 sources/microsoft-todo/    To Do module (read + create task only)        <- vendored subset, see Attribution
 sources/gmail|github|folio/  read-only source modules
 sources/kakao/             send-to-me module
-sources/server/            home-server and school-LLM checks (not wired into the daily run yet)
+sources/server/            home-server and school-LLM checks (used by the daily run: `checkServices` and `checkLlm` only, read-only)
 shared/                    env-file (token lines in .env.local), logger, SourceError
 openspec/                  config, specs, change plans
 ```

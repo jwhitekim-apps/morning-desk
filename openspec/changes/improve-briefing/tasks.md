@@ -12,24 +12,24 @@
 
 ## 2. 소스별 구역
 
-- [ ] 2.1 소스 구역의 형식을 정하고 분량을 잰다: 가짜 데이터(메일 12통, GitHub 6건, 새 논문 5편, 서버 정상)로 만든 브리핑의 글자 수와 통수를 드라이런으로 재서 design.md에 적는다(실제 메일·비밀은 쓰지 않는다). 검증: design.md에 측정 표가 있고 0.1 결정에 쓸 수 있다
-- [ ] 2.2 `ReportInput`에 소스별 구역 입력을 더하고 `run.ts`가 읽은 결과를 `compose`로 넘기게 한다. 쓰이지 않는 필드(`papers`, `mailDeadlines`)는 새 입력으로 대체하거나 지운다. 검증: 단위 테스트에서 후보가 없는 날에도 구역이 나오고, 0건 구역이 사라지지 않으며, 상한을 넘으면 남은 개수가 나온다
-- [ ] 2.3 꺼진 소스는 한 줄로 알리고 실패 구역에 올리지 않으며, 소스 하나가 실패해도 나머지 구역이 나오게 한다. 검증: 폴리오를 끈 실행에서 "꺼져 있다" 한 줄이 나오고 실패 구역은 비어 있다. Gmail 만료 모의에서는 실패 구역에 원인이 나오고 GitHub·폴리오 구역은 그대로다
-- [ ] 2.4 구역을 중요도 순서(실패, 확인, 서버 이상, 먼저 할 일, 오늘, 밀린 일, 임박, 새로 찾은 일, 소스별, 서버 정상, 꺼진 소스, 참고)로 놓고, 분량이 모자라면 아래부터 구역 단위로 빼서 빠진 개수를 알린다. 검증: 서버 이상이 소스 구역보다 먼저 나오고, 한도를 줄인 테스트에서 참고·꺼진 소스·소스별 순으로 빠진다
-- [ ] 2.5 제목을 길이 제한하고(메일은 제목만, 보낸 사람·본문 없음) 구역 제목에 "이번에 새로 읽은"임을 밝힌다(`memory.processed`로 걸러진 것은 건수에 들어가지 않는다). 로그에는 건수와 소요 시간만 남긴다. 검증: 본문과 보낸 사람이 있는 모의 메일로 만든 메시지에 제목 외의 내용이 없고, 로그에 제목이 없다
+- [x] 2.1 소스 구역의 형식을 정하고 분량을 잰다: 가짜 데이터(메일 12통, GitHub 6건, 새 논문 5편, 서버 정상)로 만든 브리핑의 글자 수와 통수를 드라이런으로 재서 design.md에 적는다(실제 메일·비밀은 쓰지 않는다). 검증: design.md에 측정 표가 있고 0.1 결정에 쓸 수 있다 (design.md 「분량 측정」 표. 평범한 날(10통)은 8통에 다 들어가지 않아 폴리오·서버 정상·참고가 생략된다. 머리말 합치기와 제목 3개 축소는 사용자가 결정 중)
+- [x] 2.2 `ReportInput`에 소스별 구역 입력을 더하고 `run.ts`가 읽은 결과를 `compose`로 넘기게 한다. 쓰이지 않는 필드(`papers`, `mailDeadlines`)는 새 입력으로 대체하거나 지운다. 검증: 단위 테스트에서 후보가 없는 날에도 구역이 나오고, 0건 구역이 사라지지 않으며, 상한을 넘으면 남은 개수가 나온다 (app/test/report-sources.test.ts: 0건 구역 유지, 5개 초과 시 남은 개수)
+- [x] 2.3 꺼진 소스는 한 줄로 알리고 실패 구역에 올리지 않으며, 소스 하나가 실패해도 나머지 구역이 나오게 한다. 검증: 폴리오를 끈 실행에서 "꺼져 있다" 한 줄이 나오고 실패 구역은 비어 있다. Gmail 만료 모의에서는 실패 구역에 원인이 나오고 GitHub·폴리오 구역은 그대로다 (report-sources.test.ts: 꺼진 소스는 한 줄이며 실패 아님)
+- [x] 2.4 구역을 중요도 순서(실패, 확인, 서버 이상, 먼저 할 일, 오늘, 밀린 일, 임박, 새로 찾은 일, 소스별, 서버 정상, 꺼진 소스, 참고)로 놓고, 분량이 모자라면 아래부터 구역 단위로 빼서 빠진 개수를 알린다. 검증: 서버 이상이 소스 구역보다 먼저 나오고, 한도를 줄인 테스트에서 참고·꺼진 소스·소스별 순으로 빠진다 (report-sources.test.ts: 서버 이상이 소스 구역보다 먼저, 전체 순서, 자리가 모자라면 아래 구역부터 빠짐)
+- [x] 2.5 제목을 길이 제한하고(메일은 제목만, 보낸 사람·본문 없음) 구역 제목에 "이번에 새로 읽은"임을 밝힌다(`memory.processed`로 걸러진 것은 건수에 들어가지 않는다). 로그에는 건수와 소요 시간만 남긴다. 검증: 본문과 보낸 사람이 있는 모의 메일로 만든 메시지에 제목 외의 내용이 없고, 로그에 제목이 없다 (report-sources.test.ts: 40자 제한, 제목만 담김. run.test.ts: 로그에 건수만, 제목 없음)
 
 ## 3. [참고] 정리와 문구
 
-- [ ] 3.1 `interpret.ts`의 `dropped` 집계를 사유별(`noEvidence`, `instructionLike`, `perSourceCap`, `duplicate`, `overTotalCap`, `dateDropped`, `sentenceDropped`)로 나누고 실행 로그에 건수로만 남긴다. 검증: 사유별로 하나씩 걸리는 모의 모델 출력에서 해당 건수가 정확하고 로그에 제목·인용이 없다. 기존 프롬프트 주입 시험이 그대로 통과한다
-- [ ] 3.2 `run.ts`의 두 문장을 바꾼다: 태스크 추가가 꺼져 있으면 "태스크 추가가 꺼져 있어요(찾은 일 N건은 To Do에 없어요).", 걸러낸 건수 문장은 카톡에서 뺀다(0.3에서 다르게 정하면 그에 따른다). 검증: 두 경우의 단위 테스트에서 "비교"라는 말이 없고 걸러냈다는 문장이 없다. 한도 초과와 "모델 없이" 안내는 그대로 나온다
-- [ ] 3.3 제목의 "아침 보고"를 "브리핑"으로, 모델 지시문의 "오늘 아침 브리핑"을 시각에 맞는 표현으로 고친다. 검증: 제목과 지시문에 "아침"이 없고, 기존 보고 형식 테스트가 새 제목에 맞게 통과한다
+- [x] 3.1 `interpret.ts`의 `dropped` 집계를 사유별(`noEvidence`, `instructionLike`, `perSourceCap`, `duplicate`, `overTotalCap`, `dateDropped`, `sentenceDropped`)로 나누고 실행 로그에 건수로만 남긴다. 검증: 사유별로 하나씩 걸리는 모의 모델 출력에서 해당 건수가 정확하고 로그에 제목·인용이 없다. 기존 프롬프트 주입 시험이 그대로 통과한다 (app/test/interpret-reasons.test.ts: 사유별 건수. 기존 주입 시험 통과)
+- [x] 3.2 `run.ts`의 두 문장을 바꾼다: 태스크 추가가 꺼져 있으면 "태스크 추가가 꺼져 있어요(찾은 일 N건은 To Do에 없어요).", 걸러낸 건수 문장은 카톡에서 뺀다(0.3에서 다르게 정하면 그에 따른다). 검증: 두 경우의 단위 테스트에서 "비교"라는 말이 없고 걸러냈다는 문장이 없다. 한도 초과와 "모델 없이" 안내는 그대로 나온다 (app/test/run.test.ts, report 시험 통과)
+- [x] 3.3 제목의 "아침 보고"를 "브리핑"으로, 모델 지시문의 "오늘 아침 브리핑"을 시각에 맞는 표현으로 고친다. 검증: 제목과 지시문에 "아침"이 없고, 기존 보고 형식 테스트가 새 제목에 맞게 통과한다 (report-sources.test.ts 「title says briefing and never morning」)
 
 ## 4. 서버 점검 연결
 
-- [ ] 4.1 `app/src/modules.ts`의 `SourceModules`에 `server`를 더하고 점검 모듈을 만든다(설정 파일이 없어도 앱이 죽지 않게 한다). 검증: 점검 설정이 없는 환경에서 `createModules`가 성공하고 실행이 서버 점검을 건너뛰었다는 한 줄을 남긴다
-- [ ] 4.2 `run.ts`가 `checkServices`와 `checkLlm`을 불러 서버 구역을 만든다: 이상(저하·중단·점검 불가)만 항목, 모두 정상이면 한 줄. 점검 하나가 실패해도 실행은 계속된다. 검증: 모두 정상, 서비스 중단, 도커 사용 불가(점검 불가로 구분), 설정 없음 네 경우의 테스트
-- [ ] 4.3 `app/test/run.test.ts`의 "앱이 받는 함수는 허용 목록과 정확히 같다" 시험에 서버 점검 모듈(`SERVER_CHECKS_ALLOWED`)을 더하고, 하루 실행이 `summarizeDockerLogs`를 부르지 않음을 시험한다. 검증: 서버 모듈에 쓰기·실행 이름의 함수를 더하면 시험이 실패한다
-- [ ] 4.4 점검이 모델 생성 호출을 하지 않음을 시험한다(`checkLlm`은 모델 목록까지만). 검증: 모의 서버가 받은 요청 중 `chat/completions`가 없다
+- [x] 4.1 `app/src/modules.ts`의 `SourceModules`에 `server`를 더하고 점검 모듈을 만든다(설정 파일이 없어도 앱이 죽지 않게 한다). 검증: 점검 설정이 없는 환경에서 `createModules`가 성공하고 실행이 서버 점검을 건너뛰었다는 한 줄을 남긴다 (app/test/server-status.test.ts 「missing targets config is skipped」, report-sources.test.ts의 건너뜀 한 줄)
+- [x] 4.2 `run.ts`가 `checkServices`와 `checkLlm`을 불러 서버 구역을 만든다: 이상(저하·중단·점검 불가)만 항목, 모두 정상이면 한 줄. 점검 하나가 실패해도 실행은 계속된다. 검증: 모두 정상, 서비스 중단, 도커 사용 불가(점검 불가로 구분), 설정 없음 네 경우의 테스트 (server-status.test.ts: 정상, 서비스 중단, 도커 점검 불가, 설정 없음, 예상 밖 오류)
+- [x] 4.3 `app/test/run.test.ts`의 "앱이 받는 함수는 허용 목록과 정확히 같다" 시험에 서버 점검 모듈(`SERVER_CHECKS_ALLOWED`)을 더하고, 하루 실행이 `summarizeDockerLogs`를 부르지 않음을 시험한다. 검증: 서버 모듈에 쓰기·실행 이름의 함수를 더하면 시험이 실패한다 (app/test/run.test.ts의 SERVER_CHECKS_ALLOWED 허용 목록 시험, server-status.test.ts 「never summarizeDockerLogs」)
+- [x] 4.4 점검이 모델 생성 호출을 하지 않음을 시험한다(`checkLlm`은 모델 목록까지만). 검증: 모의 서버가 받은 요청 중 `chat/completions`가 없다 (sources/server/test/llm.test.ts: GET /v1/models 요청만 받음)
 
 ## 5. 서버 설정 준비 (사용자와 함께, 비밀값은 출력하지 않는다)
 
@@ -40,14 +40,14 @@
 
 ## 6. 카톡 통수 (0.1에서 A를 골랐을 때만)
 
-- [ ] 6.1 `MAX_BATCH`(`sources/kakao`)와 `MAX_BUBBLES`(`app`)를 정한 값으로 바꾸고 관련 테스트를 고친다. 검증: 한도를 넘는 입력은 여전히 보내지 않고 거부하며, 새 한도까지는 순서대로 보낸다. 드라이런에서 2.1의 측정과 실제 통수가 일치한다
-- [ ] 6.2 `kakao-send-tools`의 "여러 통을 한 번에 보낼 때는 최대 3통까지" 요구사항과 시나리오를 새 값에 맞게 고친다(MODIFIED 델타를 이 변경에 더한다). 검증: `openspec validate improve-briefing --strict` 통과
+- [x] 6.1 `MAX_BATCH`(`sources/kakao`)와 `MAX_BUBBLES`(`app`)를 정한 값으로 바꾸고 관련 테스트를 고친다. 검증: 한도를 넘는 입력은 여전히 보내지 않고 거부하며, 새 한도까지는 순서대로 보낸다. 드라이런에서 2.1의 측정과 실제 통수가 일치한다 (MAX_BATCH=8(sources/kakao/src/kakao/api.ts), MAX_BUBBLES=8(app/src/briefing/deterministic.ts), sources/kakao/test/send.test.ts. 실제 통수와 측정 일치는 design.md 표)
+- [x] 6.2 `kakao-send-tools`의 "여러 통을 한 번에 보낼 때는 최대 3통까지" 요구사항과 시나리오를 새 값에 맞게 고친다(MODIFIED 델타를 이 변경에 더한다). 검증: `openspec validate improve-briefing --strict` 통과 (improve-briefing/specs/kakao-send-tools/spec.md, `openspec validate improve-briefing --strict` 통과)
 
 ## 7. 문서
 
-- [ ] 7.1 `README.md`와 `AGENTS.md`의 "아침 브리핑" 표현과 구조 설명을 정리하고, 서버 점검이 하루 실행에 연결됐음을 적는다(`AGENTS.md`의 "not wired into the daily run yet" 문구 포함). 검증: 두 파일에 "아침"과 "not wired" 표현이 남아 있지 않다
-- [ ] 7.2 `assistant-app`의 문서(`design.md`, `tasks.md`)에서 "아침/7시/07:00" 표현을 정리하고 "결정 기록: 브리핑 개선(2026-10-16)"을 덧붙인다. 검증: 해당 문서에 7시 크론이 현재 사실로 남아 있지 않고 결정 기록이 있다
-- [ ] 7.3 0.1에서 통수를 바꾸기로 했다면 `assistant-app`의 `daily-briefing` 델타의 "구역 단위로 말풍선에 담는다" 요구사항과 시나리오("세 통을 넘으면")를 새 값에 맞게 직접 고친다. 검증: `openspec validate assistant-app --strict` 통과
+- [x] 7.1 `README.md`와 `AGENTS.md`의 "아침 브리핑" 표현과 구조 설명을 정리하고, 서버 점검이 하루 실행에 연결됐음을 적는다(`AGENTS.md`의 "not wired into the daily run yet" 문구 포함). 검증: 두 파일에 "아침"과 "not wired" 표현이 남아 있지 않다 (README.md와 AGENTS.md에 「아침」「not wired」 없음(grep))
+- [x] 7.2 `assistant-app`의 문서(`design.md`, `tasks.md`)에서 "아침/7시/07:00" 표현을 정리하고 "결정 기록: 브리핑 개선(2026-10-16)"을 덧붙인다. 검증: 해당 문서에 7시 크론이 현재 사실로 남아 있지 않고 결정 기록이 있다 (assistant-app/design.md의 「결정 기록: 브리핑 개선」. 남은 07:00/아침은 옛 기록으로 표시됨)
+- [x] 7.3 0.1에서 통수를 바꾸기로 했다면 `assistant-app`의 `daily-briefing` 델타의 "구역 단위로 말풍선에 담는다" 요구사항과 시나리오("세 통을 넘으면")를 새 값에 맞게 직접 고친다. 검증: `openspec validate assistant-app --strict` 통과 (daily-briefing 델타를 8통(초과는 9통)으로 고침, `openspec validate assistant-app --strict` 통과)
 
 ## 8. 배포 (사용자와 함께, 1.1 이후)
 

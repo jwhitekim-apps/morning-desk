@@ -41,6 +41,10 @@ node app/dist/index.js --help
 
 `sources/microsoft-todo`는 **[fabienbutz/microsoft-todo-mcp](https://github.com/fabienbutz/microsoft-todo-mcp)**(© 2026 Fabien Butz, MIT)를 바탕으로 필요한 부분만 골라 고친 것입니다. 기준 커밋, 원본 대비 변경, 라이선스는 [`sources/microsoft-todo/README.md`](sources/microsoft-todo/README.md), [`CHANGELOG.md`](sources/microsoft-todo/CHANGELOG.md), [`LICENSE`](sources/microsoft-todo/LICENSE)에 있습니다.
 
+## 라이선스
+
+이 프로젝트는 MIT 라이선스입니다([`LICENSE`](LICENSE)). `sources/microsoft-todo`에는 fabienbutz/microsoft-todo-mcp에서 가져와 고친 코드가 있고, 그 부분은 원본의 MIT 라이선스([`sources/microsoft-todo/LICENSE`](sources/microsoft-todo/LICENSE))를 따릅니다.
+
 ## 개발 규칙
 
 - 작업은 OpenSpec으로 관리합니다. `/opsx:propose`로 계획서를 쓰고 **검토를 받은 뒤** 구현합니다.

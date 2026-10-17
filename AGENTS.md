@@ -26,6 +26,8 @@ npm run typecheck && npm run lint && npm test && npm run build
 
 Only `app/` is built (`app/dist/index.js` bundles the source modules). All four must pass before you finish a change. Tests mock Microsoft Graph and every other service; nothing hits the network. Real-account checks are separate tasks done together with the owner.
 
+CI (`.github/workflows/ci.yml`) runs the same four commands on pushes to `main` and on pull requests with Node 20. It uses mocked services only, so real-account checks and the home-server environment are still verified together with the owner.
+
 ## Workflow (OpenSpec)
 
 - Behavior changes go through OpenSpec. `/opsx:propose` writes proposal, delta specs, design and tasks, and then **you stop and wait for review**. Implement only after the owner says so (`/opsx:apply` or an explicit "진행해"). Do not implement, commit or deploy in the same turn as a proposal.

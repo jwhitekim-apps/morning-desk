@@ -30,10 +30,25 @@ export interface LogFields {
   errorCode?: string;
   version?: string;
   registeredTools?: number;
+  /** 모델 답을 검사해 버린 개수(사유별). 개수만 기록한다. */
+  noEvidence?: number;
+  instructionLike?: number;
+  perSourceCap?: number;
+  duplicate?: number;
+  overTotalCap?: number;
+  rawLimit?: number;
+  dateDropped?: number;
+  sentenceDropped?: number;
+  /** 소스별로 이번에 읽은 건수(건수만). */
+  mails?: number;
+  github?: number;
+  papers?: number;
 }
 
 const ALLOWED = new Set<string>([
   "tool", "op", "durationMs", "status", "count", "chars", "source", "step", "attempt", "waitMs", "truncated", "outcome", "errorCode", "version", "registeredTools",
+  "noEvidence", "instructionLike", "perSourceCap", "duplicate", "overTotalCap", "rawLimit", "dateDropped", "sentenceDropped",
+  "mails", "github", "papers",
 ]);
 
 /** 허용 필드 중에서도 숫자·불리언·짧은 문자열만 통과시킨다. */

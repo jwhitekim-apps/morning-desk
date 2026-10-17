@@ -25,11 +25,23 @@ export interface AcceptedCandidate {
   dueDropped?: true;
 }
 
+/** 버린 것의 사유별 개수. candidates = 날짜 외 후보 사유들의 합, dates = dateDropped, sentences = sentenceDropped. */
+export interface DropReasons {
+  noEvidence: number;
+  instructionLike: number;
+  perSourceCap: number;
+  duplicate: number;
+  overTotalCap: number;
+  rawLimit: number;
+  dateDropped: number;
+  sentenceDropped: number;
+}
+
 export interface Interpretation {
   candidates: AcceptedCandidate[];
   remark: Sentence[];
   /** 코드가 버린 것의 개수(사유별). 브리핑과 로그에 건수만 쓴다. */
-  dropped: { candidates: number; dates: number; sentences: number };
+  dropped: { candidates: number; dates: number; sentences: number; reasons: DropReasons };
 }
 
 const norm = (s: string): string => s.replace(/\s+/g, " ").trim().toLowerCase();
@@ -96,7 +108,7 @@ export async function interpret(model: Model, input: PromptInput, logger: Logger
   const items = dataItems(input);
   const byKey = new Map<string, DataItem>(items.map((d) => [`${d.source}:${d.id}`, d]));
   const everything = norm(items.map((d) => d.text).join("\n"));
-  const dropped = { candidates: 0, dates: 0, sentences: 0 };
+  const reasons: DropReasons = { noEvidence: 0, instructionLike: 0, perSourceCap: 0, duplicate: 0, overTotalCap: 0, rawLimit: 0, dateDropped: 0, sentenceDropped: 0 };
 
   const candidates: AcceptedCandidate[] = [];
   const seen = new Set<string>();
@@ -104,18 +116,18 @@ export async function interpret(model: Model, input: PromptInput, logger: Logger
   // 소스당 상한을 먼저 적용하고 전체 상한은 나중에 적용한다. 한 소스(지시문이 든 메일)가 후보를 쏟아내도
   // 다른 소스의 정상 후보가 밀려나지 않게 하기 위해서다. 처리량은 RAW_LIMIT으로 묶는다.
   const RAW_LIMIT = 1000;
-  dropped.candidates += Math.max(0, output.candidates.length - RAW_LIMIT);
+  reasons.rawLimit += Math.max(0, output.candidates.length - RAW_LIMIT);
   for (const c of output.candidates.slice(0, RAW_LIMIT) as Candidate[]) {
     const item = byKey.get(`${c.source}:${c.sourceId}`);
     const title = cleanTitle(c.title);
     // 입력에 없던 소스를 가리키거나, 근거 인용이 그 소스에 없으면 버린다.
-    if (!item || !title || norm(c.evidence).length === 0 || !norm(item.text).includes(norm(c.evidence))) { dropped.candidates++; continue; }
+    if (!item || !title || norm(c.evidence).length === 0 || !norm(item.text).includes(norm(c.evidence))) { reasons.noEvidence++; continue; }
     // 지시문처럼 보이는 제목, 그리고 한 소스에서 너무 많이 나온 후보는 받아들이지 않는다(프롬프트 주입 방어).
-    if (INSTRUCTION_LIKE.test(title)) { dropped.candidates++; continue; }
+    if (INSTRUCTION_LIKE.test(title)) { reasons.instructionLike++; continue; }
     const count = perSource.get(`${c.source}:${c.sourceId}`) ?? 0;
-    if (count >= MAX_PER_SOURCE) { dropped.candidates++; continue; }
+    if (count >= MAX_PER_SOURCE) { reasons.perSourceCap++; continue; }
     const key = `${c.sourceId}\u0000${norm(title)}`;
-    if (seen.has(key)) { dropped.candidates++; continue; }
+    if (seen.has(key)) { reasons.duplicate++; continue; }
     seen.add(key);
     perSource.set(`${c.source}:${c.sourceId}`, count + 1);
     let due = c.due;
@@ -123,23 +135,29 @@ export async function interpret(model: Model, input: PromptInput, logger: Logger
     if (due !== null && (!isRealDate(due) || !c.dueEvidence || norm(c.dueEvidence).length === 0 || !norm(item.text).includes(norm(c.dueEvidence)))) {
       due = null;
       dueDropped = true;
-      dropped.dates++;
+      reasons.dateDropped++;
     }
     candidates.push({ title, due, source: c.source, sourceId: c.sourceId, evidence: c.evidence, ...(dueDropped ? { dueDropped: true as const } : {}) });
   }
 
   if (candidates.length > MAX_CANDIDATES) {
-    dropped.candidates += candidates.length - MAX_CANDIDATES;
+    reasons.overTotalCap += candidates.length - MAX_CANDIDATES;
     candidates.length = MAX_CANDIDATES;
   }
 
-  dropped.sentences += Math.max(0, output.remark.length - MAX_REMARK);
+  reasons.sentenceDropped += Math.max(0, output.remark.length - MAX_REMARK);
   const remark = output.remark.slice(0, MAX_REMARK).filter((s) => {
     const ok = norm(s.evidence).length > 0 && everything.includes(norm(s.evidence));
-    if (!ok) dropped.sentences++;
+    if (!ok) reasons.sentenceDropped++;
     return ok;
   });
 
-  logger.info("model answer checked", { op: "interpret", count: candidates.length });
+  const dropped = {
+    candidates: reasons.noEvidence + reasons.instructionLike + reasons.perSourceCap + reasons.duplicate + reasons.overTotalCap + reasons.rawLimit,
+    dates: reasons.dateDropped,
+    sentences: reasons.sentenceDropped,
+    reasons,
+  };
+  logger.info("model answer checked", { op: "interpret", count: candidates.length, ...reasons });
   return { candidates, remark, dropped };
 }

@@ -134,7 +134,7 @@ describe("interpret", () => {
     const r = await interpret(scripted(GOOD).model, INPUT, quiet);
     expect(r.candidates).toEqual([{ title: "학회 초록 제출", due: "2026-10-30", source: "mail", sourceId: "m1", evidence: "초록 제출 기한은 2026년 10월 30일까지입니다" }]);
     expect(r.remark.map((s) => s.text)).toEqual(["오늘은 랩미팅이 있어요."]);
-    expect(r.dropped).toEqual({ candidates: 0, dates: 0, sentences: 0 });
+    expect(r.dropped).toMatchObject({ candidates: 0, dates: 0, sentences: 0 });
   });
 
   it("an answer that does not match the format is asked for once more, and the second answer is used", async () => {
@@ -199,7 +199,7 @@ describe("interpret", () => {
     ], remark: [] });
     const r = await interpret(scripted(answer).model, INPUT, quiet);
     expect(r.candidates.map((c) => [c.title, c.due])).toEqual([["빈 날짜 근거", null]]);
-    expect(r.dropped).toEqual({ candidates: 1, dates: 1, sentences: 0 });
+    expect(r.dropped).toMatchObject({ candidates: 1, dates: 1, sentences: 0 });
   });
 
   it("duplicate candidates from the same source are kept once", async () => {

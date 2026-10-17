@@ -3,9 +3,12 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+// Node 20은 .ts를 직접 실행하지 못하므로 vitest에 딸린 vite-node로 자식 프로세스를 띄운다.
+const VITE_NODE = createRequire(import.meta.url).resolve("vite-node/vite-node.mjs");
 const WRITER = fileURLToPath(new URL("./fixtures/env-writer.mjs", import.meta.url));
 
 const OTHER = ["# 정리된 설정", "GMAIL_CLIENT_ID=abc", "", "# 큰 줄", `PADDING=${"p".repeat(200_000)}`, ""].join("\n");
@@ -17,7 +20,7 @@ function tmpFile(): string {
 }
 
 function run(args: string[]): { done: Promise<number | null>; kill: () => void } {
-  const child = spawn(process.execPath, [WRITER, ...args], { stdio: ["ignore", "ignore", "inherit"] });
+  const child = spawn(process.execPath, [VITE_NODE, WRITER, ...args], { stdio: ["ignore", "ignore", "inherit"] });
   return {
     done: new Promise((resolve) => child.on("exit", (code) => resolve(code))),
     kill: () => child.kill("SIGKILL"),

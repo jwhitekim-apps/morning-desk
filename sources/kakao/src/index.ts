@@ -14,7 +14,7 @@ export { countChars, MAX_BATCH, TEXT_LIMIT, type SendResult } from "./kakao/api"
  */
 export interface KakaoSource {
   /**
-   * 1~3통을 입력한 순서대로 보낸다. 한 통은 200자까지이고, 넘으면 자르지 않고 입력 오류로 거부한다.
+   * 1~8통을 입력한 순서대로 보낸다. 한 통은 200자까지이고, 넘으면 자르지 않고 입력 오류로 거부한다.
    * 하나라도 검사에 걸리면 아무것도 보내지 않는다. `dryRun`이면 보내지 않고 보낼 내용과 글자 수만 돌려준다
    * (`KAKAO_DRY_RUN`이 켜져 있으면 항상 드라이런).
    */

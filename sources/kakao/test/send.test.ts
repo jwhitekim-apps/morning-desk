@@ -129,16 +129,17 @@ describe("other failures are told apart and never retried", () => {
 });
 
 describe("several messages", () => {
-  it("sends three in the given order", async () => {
+  it("sends the maximum number in the given order", async () => {
     const { api, sent } = setup();
-    const r = await api.sendMany(["하나", "둘", "셋"]);
-    expect(sent.map((s) => s.text)).toEqual(["하나", "둘", "셋"]);
-    expect(r).toMatchObject({ sent: 3, dryRun: false });
+    const texts = Array.from({ length: MAX_BATCH }, (_, i) => `m${i + 1}`);
+    const r = await api.sendMany(texts);
+    expect(sent.map((s) => s.text)).toEqual(texts);
+    expect(r).toMatchObject({ sent: MAX_BATCH, dryRun: false });
   });
 
-  it("four messages: none is sent, input error", async () => {
+  it("one more than the maximum: none is sent, input error", async () => {
     const { api, sent } = setup();
-    await expect(api.sendMany(["a", "b", "c", "d"])).rejects.toMatchObject({ code: "validation_error", message: expect.stringContaining(`at most ${MAX_BATCH}`) });
+    await expect(api.sendMany(Array.from({ length: MAX_BATCH + 1 }, (_, i) => `m${i}`))).rejects.toMatchObject({ code: "validation_error", message: expect.stringContaining(`at most ${MAX_BATCH}`) });
     expect(sent).toHaveLength(0);
   });
 
@@ -173,7 +174,7 @@ describe("dry run", () => {
   it("applies the same limits as a real send", async () => {
     const { api } = setup();
     await expect(api.sendOne("나".repeat(230), { dryRun: true })).rejects.toMatchObject({ code: "validation_error", message: expect.stringMatching(/30 over/) });
-    await expect(api.sendMany(["a", "b", "c", "d"], { dryRun: true })).rejects.toMatchObject({ code: "validation_error" });
+    await expect(api.sendMany(Array.from({ length: MAX_BATCH + 1 }, (_, i) => `m${i}`), { dryRun: true })).rejects.toMatchObject({ code: "validation_error" });
   });
 
   it("works without a link configured", async () => {

@@ -7,7 +7,7 @@ const MEMO_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send";
 /** 카카오 텍스트 템플릿 본문 한도(글자 수). */
 export const TEXT_LIMIT = 200;
 /** 한 번에 보낼 수 있는 통수. */
-export const MAX_BATCH = 3;
+export const MAX_BATCH = 8;
 
 export interface KakaoApiOptions {
   linkUrl: string | undefined;

@@ -28,11 +28,11 @@ test('section titles use the unit of each source', () => {
   assert.match(t, /\[폴리오 · 이번에 새로 읽은 1편\]\n· p/);
 });
 
-test('more than five titles show five and the rest as a count', () => {
+test('more than three titles show three and the rest as a count', () => {
   const titles = Array.from({ length: 8 }, (_, i) => `제목 ${i + 1}`);
   const t = text({ sourceSections: [{ name: '메일', count: 8, titles }] });
-  assert.equal((t.match(/^· 제목 \d$/gm) ?? []).length, 5);
-  assert.match(t, /^…외 3건$/m);
+  assert.equal((t.match(/^· 제목 \d$/gm) ?? []).length, 3);
+  assert.match(t, /^…외 5건$/m);
 });
 
 test('count larger than the titles passed still reports the remainder', () => {

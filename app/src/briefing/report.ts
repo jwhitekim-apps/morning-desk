@@ -51,6 +51,8 @@ export type ReportInput = {
 const DEFAULT_TIME_ZONE = 'Asia/Seoul';
 const SECTION_CAP = 5;
 const SMALL_CAP = 3;
+// 소스 구역(메일·GitHub·폴리오)에 보여 주는 제목 수. 넘는 만큼은 "…외 M건"으로 알린다.
+const SOURCE_TITLE_CAP = 3;
 const TITLE_LIMIT = 40;
 export const UPCOMING_DAYS = 7;
 
@@ -208,8 +210,10 @@ export function packSections(header: string, sections: Section[], limit: number,
     }
 
     // 말풍선 하나에도 안 들어가는 구역: 항목 단위로 나눈다.
+    // 현재 말풍선에 머리말뿐이면 머리말을 홀로 두지 않고 이 구역의 첫 조각을 머리말 아래에 붙인다.
+    const headerOnly = bubbles.length === 1 && lastOf(bubbles).length === 1;
     const remaining = capacity - size(lastOf(bubbles)) - 2;
-    const startNew = remaining < MIN_PIECE;
+    const startNew = !headerOnly && remaining < MIN_PIECE;
     let room = startNew ? capacity : remaining;
     let pieceIndex = 0;
     let items: string[] = [];
@@ -226,7 +230,8 @@ export function packSections(header: string, sections: Section[], limit: number,
         omitted += 1;
         continue;
       }
-      const item = clip(raw, Math.max(10, capacity - titleOf().length - 4));
+      const itemRoom = pieceIndex === 0 && items.length === 0 && headerOnly ? remaining : capacity;
+      const item = clip(raw, Math.max(10, itemRoom - titleOf().length - 4));
       if (items.length > 0 && renderSection({ title: titleOf(), items: [...items, item] }).length > room) {
         flush();
         if (full) {
@@ -323,7 +328,7 @@ export function buildReport(input: ReportInput, limit: number, maxMessages = 3):
     const src = bySource.get(name);
     if (!src) continue;
     const titles = src.titles.map((t) => `· ${clip(t, TITLE_LIMIT)}`);
-    const shown = titles.slice(0, SECTION_CAP);
+    const shown = titles.slice(0, SOURCE_TITLE_CAP);
     const rest = src.count > shown.length ? src.count - shown.length : 0;
     if (rest > 0) shown.push(`…외 ${rest}건`);
     add(`${name} · 이번에 새로 읽은 ${src.count}${SOURCE_UNIT[name]}`, src.count === 0 && shown.length === 0 ? ['읽은 것 없음'] : shown);

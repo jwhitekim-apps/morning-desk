@@ -324,3 +324,25 @@ test('packSections keeps the header alone when there is nothing else, and never 
   const messages = packSections('머리말', [{ title: '구역', items: ['· 항목'] }], 200, 3);
   assert.deepEqual(messages, ['머리말\n\n[구역]\n· 항목']);
 });
+
+test('packSections puts the header in the same bubble as the first section when they fit', () => {
+  const messages = packSections('머리말', [{ title: '구역', items: ['· 가'.repeat(5)] }, { title: '둘', items: ['· 나'] }], 200, 8);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0] ?? '', /^머리말\n\n\[구역\]/);
+});
+
+test('packSections never leaves the header alone when the first section does not fit with it', () => {
+  const items = Array.from({ length: 14 }, (_, i) => `· ${'항'.repeat(15)} ${i + 1}`);
+  const messages = packSections('머리말', [{ title: '구역', items }, { title: '뒤', items: ['· 끝'] }], 200, 8);
+  assert.ok(messages.length >= 2);
+  assert.ok(messages.every((m) => m.length <= 200));
+  assert.match(messages[0] ?? '', /^머리말 \(1\/\d+\)\n\n\[구역\]\n· 항/);
+  assert.ok(messages.join('\n').includes('(이어서)'));
+  assert.ok(messages.join('\n').indexOf('[구역]') < messages.join('\n').indexOf('[뒤]'));
+});
+
+test('packSections with one long item as the first section still puts it under the header within the limit', () => {
+  const messages = packSections('머리말', [{ title: '구역', items: ['· ' + '가'.repeat(400)] }], 200, 8);
+  assert.ok(messages.every((m) => m.length <= 200));
+  assert.match(messages[0] ?? '', /^머리말\n\n\[구역\]/);
+});

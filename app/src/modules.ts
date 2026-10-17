@@ -4,6 +4,7 @@ import { createFolioSource, loadConfig as folioConfig, type FolioSource } from "
 import { createGithubSource, loadConfig as githubConfig, type GithubSource } from "@morning-desk/github";
 import { createGmailSource, loadConfig as gmailConfig, type GmailSource } from "@morning-desk/gmail";
 import { createKakaoSource, loadConfig as kakaoConfig, type KakaoSource } from "@morning-desk/kakao";
+import { createServerChecks, loadConfig as serverConfig, type ServerChecks } from "@morning-desk/server";
 import { createTodoSource, loadConfig as todoConfig, type TodoSource } from "@morning-desk/microsoft-todo";
 import type { Logger } from "@morning-desk/shared";
 import { AppError } from "./errors";
@@ -18,6 +19,8 @@ export interface SourceModules {
   github: GithubSource;
   folio: FolioSource;
   kakao: KakaoSource;
+  /** 집 서버 점검(읽기 전용). 점검 대상 파일이 없어도 만들어지고, 없으면 호출이 `config_missing`으로 끝난다. */
+  server: ServerChecks;
 }
 
 /** 소스 호출 하나의 제한 시간(예전 MCP 호출과 같다). */
@@ -51,5 +54,6 @@ export function createModules(env: NodeJS.ProcessEnv, repoRoot: string, logger: 
     github: withTimeouts(createGithubSource(githubConfig(withFile), { logger: logger.child({ source: "github" }) })),
     folio: withTimeouts(createFolioSource(folioConfig(withFile), { logger: logger.child({ source: "folio" }) })),
     kakao: withTimeouts(createKakaoSource(kakaoConfig(withFile), { logger: logger.child({ source: "kakao" }) })),
+    server: withTimeouts(createServerChecks(serverConfig(withFile, repoRoot), { logger: logger.child({ source: "server" }) })),
   };
 }

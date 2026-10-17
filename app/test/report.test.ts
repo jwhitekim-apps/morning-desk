@@ -9,7 +9,7 @@ const empty: ReportInput = { now: NOW, tasksToday: [], created: [], uncertain: [
 
 test('the header uses the local date and weekday', () => {
   const [message = ''] = buildReport(empty, 200);
-  assert.match(message.split('\n')[0] ?? '', /^10\/8\(목\) 아침 보고$/);
+  assert.match(message.split('\n')[0] ?? '', /^10\/8\(목\) 브리핑$/);
 });
 
 test('a quiet day says so', () => {
@@ -176,24 +176,17 @@ test('overdue and upcoming lines show how many days, when known', () => {
   assert.match(message, /· 송금\(10\/9·1일 후\)/);
 });
 
-test('mail deadlines, neglected tasks and papers appear in their own lines', () => {
+test('mail deadlines and neglected tasks appear in their own lines', () => {
   const [message = ''] = buildReport(
     {
       ...empty,
       mailDeadlines: [{ name: '학회 초록', deadline: '2026-11-20', daysLeft: 46 }],
       stale: [{ name: '메일 정리', days: 23 }],
-      papers: { count: 3, titles: ['Attention Is All You Need', 'ReAct'] },
     },
     1000,
   );
   assert.match(message, /\[메일 마감\]\n· 학회 초록\(11\/20·46일 후\)/);
   assert.match(message, /\[방치\]\n· 메일 정리\(23일째\)/);
-  assert.match(message, /\[폴리오 · 이번 주 새 논문 3편\]\n· Attention Is All You Need\n· ReAct/);
-});
-
-test('no new papers add no lines', () => {
-  const [message = ''] = buildReport({ ...empty, papers: { count: 0, titles: [] }, tasksToday: [{ name: 'T', memo: '' }] }, 1000);
-  assert.doesNotMatch(message, /폴리오/);
 });
 
 test('identical added tasks are collapsed into one line with a count', () => {
@@ -215,7 +208,7 @@ test('when space runs out, the lines at the bottom are cut first and the importa
       failures: ['중요한 실패'],
       top: [{ name: '핵심', reason: '급함' }],
       tasksToday,
-      papers: { count: 1, titles: ['논문'] },
+      sourceSections: [{ name: '폴리오', count: 1, titles: ['논문'] }],
     },
     200,
     3,
@@ -248,12 +241,12 @@ test('classify: dedupeNames hides already-shown tasks everywhere except today', 
 
 test('a long paper title is shortened so one title cannot fill the whole message', () => {
   const long = 'OpenHands: An Open Platform for AI Software Developers as Generalist Agents';
-  const [message = ''] = buildReport({ ...empty, papers: { count: 1, titles: [long] } }, 1000);
+  const [message = ''] = buildReport({ ...empty, sourceSections: [{ name: '폴리오', count: 1, titles: [long] }] }, 1000);
   const line = message.split('\n').find((l) => l.startsWith('· OpenHands'))!;
   assert.match(line, /^· OpenHands: An Open Platform for AI Soft…$/);
   assert.equal(line.slice(2).length, 40, 'the title is cut to 40 characters including the ellipsis');
   assert.ok(!line.includes('Generalist Agents'));
-  const short = buildReport({ ...empty, papers: { count: 1, titles: ['ReAct'] } }, 1000)[0];
+  const short = buildReport({ ...empty, sourceSections: [{ name: '폴리오', count: 1, titles: ['ReAct'] }] }, 1000)[0];
   assert.match(short ?? '', /^· ReAct$/m);
 });
 
@@ -297,7 +290,7 @@ test('several bubbles are numbered, a single one is not', () => {
 
 test('sections that do not fit are left out whole, in priority order, and the omitted count matches the dropped items', () => {
   const tasksToday = Array.from({ length: 60 }, (_, i) => ({ name: `오늘 일 ${String(i).padStart(2, '0')}`, memo: '' }));
-  const messages = messagesOf({ failures: ['중요한 실패'], tasksToday, papers: { count: 1, titles: ['논문 하나'] } }, 200, 3);
+  const messages = messagesOf({ failures: ['중요한 실패'], tasksToday, sourceSections: [{ name: '폴리오', count: 1, titles: ['논문 하나'] }] }, 200, 3);
   const text = messages.join('\n');
   assert.match(text, /\[⚠ 실패\]\n· 중요한 실패/);
   assert.doesNotMatch(text, /\[폴리오/, 'a lower-priority section does not jump ahead of the cut-off one');

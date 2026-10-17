@@ -1,6 +1,6 @@
 // my-task original code (not derived from upstream).
 import { describe, expect, it } from "vitest";
-import { buildDeterministicBriefing } from "../src/briefing/deterministic";
+import { buildDeterministicBriefing, MAX_BUBBLES } from "../src/briefing/deterministic";
 import { describeFailure } from "../src/briefing/failures";
 import { collectTodo, kstToday } from "../src/briefing/todo";
 import { SourceError } from "@morning-desk/shared";
@@ -70,7 +70,7 @@ describe("the model-free briefing", () => {
     const { caller } = fakeCaller(ANSWER);
     const { messages } = await buildDeterministicBriefing(caller, NOW);
     const text = messages.join("\n");
-    expect(text.split("\n")[0]).toBe("10/12(월) 아침 보고");
+    expect(text.split("\n")[0]).toBe("10/12(월) 브리핑");
     expect(text).toContain("[먼저 할 일]\n1) 원서 제출 — 11일 밀림\n2) 랩미팅 — 오늘 마감\n3) 논문 송금 — 3일 남음");
     expect(text).toContain("[오늘]\n· 랩미팅 15:00");
     expect(text).not.toContain("[밀린 일]"); // 먼저 할 일에 올린 것은 되풀이하지 않는다
@@ -92,10 +92,10 @@ describe("the model-free briefing", () => {
     expect(calls.map((c) => `${c.server}.${c.tool}`)).toEqual(["todo.listTasksDue"]);
   });
 
-  it("every bubble fits the Kakao limit and there are at most three", async () => {
+  it("every bubble fits the Kakao limit and there are at most MAX_BUBBLES", async () => {
     const many = { items: Array.from({ length: 90 }, (_, i) => due(`아주 긴 이름의 오늘 마감 일정 번호 ${i}`, "2026-10-12")) };
     const { messages } = await buildDeterministicBriefing(fakeCaller(many).caller, NOW);
-    expect(messages.length).toBeLessThanOrEqual(3);
+    expect(messages.length).toBeLessThanOrEqual(MAX_BUBBLES);
     expect(messages.every((m) => m.length <= 200)).toBe(true);
     expect(messages[messages.length - 1]).toMatch(/…외 \d+건 생략$/);
   });

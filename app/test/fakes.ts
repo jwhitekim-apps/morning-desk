@@ -30,6 +30,7 @@ export function fakeModules(handler: Handler): { modules: SourceModules; calls: 
     github: { listReviewRequests: fn("github", "listReviewRequests"), listAssignedItems: fn("github", "listAssignedItems"), listNotifications: fn("github", "listNotifications") },
     folio: { listRecentPapers: fn("folio", "listRecentPapers"), searchPapers: fn("folio", "searchPapers") },
     kakao: { sendManyToMe: fn("kakao", "sendManyToMe", (messages, opts) => ({ messages, dryRun: (opts as { dryRun?: boolean } | undefined)?.dryRun })) },
+    server: { listTargets: fn("server", "listTargets"), checkServices: fn("server", "checkServices"), checkLlm: fn("server", "checkLlm"), summarizeDockerLogs: fn("server", "summarizeDockerLogs") },
   } as unknown as SourceModules;
   return { modules, calls };
 }

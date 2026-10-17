@@ -2,7 +2,8 @@
 import { compose, readTodo } from "./briefing/deterministic";
 import { deliver, type Delivery } from "./briefing/deliver";
 import { describeFailure } from "./briefing/failures";
-import { collectSources, type CollectOptions, type Sources } from "./briefing/sources";
+import { readServerStatus } from "./briefing/server";
+import { buildSourceSections, collectSources, type CollectOptions, type Sources } from "./briefing/sources";
 import { kstToday } from "./briefing/todo";
 import { pickTop } from "./briefing/top";
 import { applyWrites, DEFAULT_MAX_CREATES, findListId, planWrites, type WritePlan, type WriteResult } from "./briefing/writes";
@@ -66,11 +67,20 @@ export async function run(deps: RunDeps, opts: RunOptions): Promise<RunResult> {
   }
 
   const processed = { mail: new Set(Object.keys(memory.processed.mail)), github: new Set(Object.keys(memory.processed.github)) };
-  const { sources, failures: sourceFailures } = await collectSources(deps.sources, now, { ...opts.collect, processed });
+  // 서버 점검은 소스 읽기와 함께 돈다(읽기 전용, 던지지 않는다; 드라이런에서도 한다).
+  const readStart = Date.now();
+  const [collected, server] = await Promise.all([
+    collectSources(deps.sources, now, { ...opts.collect, processed }),
+    readServerStatus(deps.sources.server),
+  ]);
+  const { sources, failures: sourceFailures, disabled: disabledSources } = collected;
+  const sourceSections = buildSourceSections(collected);
+  deps.logger.info("sources read", { mails: sources.mails.length, github: sources.github.length, papers: sources.papers.length, durationMs: Date.now() - readStart });
+  const extra = { sourceSections, disabledSources, server };
   const { todo, failure: todoFailure } = await readTodo(todoSource, now);
   if (!todo) {
     // To Do를 못 읽으면 일을 판단할 기준이 없다: 실패 알림만 보낸다.
-    const { messages } = compose({ now, todo: null, failures: [...sourceFailures, todoFailure ?? "To Do 오류"] });
+    const { messages } = compose({ now, todo: null, failures: [...sourceFailures, todoFailure ?? "To Do 오류"], ...extra });
     const delivery = await deliver(kakao, messages, { dryRun: opts.dryRun });
     return { status: opts.dryRun ? "dry-run" : "sent", messages, delivery, sources, failures: [...sourceFailures, todoFailure ?? "To Do 오류"] };
   }
@@ -115,13 +125,10 @@ export async function run(deps: RunDeps, opts: RunOptions): Promise<RunResult> {
     } else {
       // 비교 전용(또는 드라이런)이면 만들 예정인 일을 보여 주기만 한다.
       for (const t of plan.toCreate) created.push({ name: t.title, deadline: t.due ?? "" });
-      if (plan.toCreate.length > 0) notes.push(opts.dryRun ? "드라이런이라 To Do에 추가하지 않았어요." : "비교 모드라 To Do에 추가하지 않았어요.");
+      if (plan.toCreate.length > 0) notes.push(opts.dryRun ? "드라이런이라 To Do에 추가하지 않았어요." : `태스크 추가가 꺼져 있어요(찾은 일 ${plan.toCreate.length}건은 To Do에 없어요).`);
     }
     for (const t of plan.toCreate) if (t.needsDateCheck) uncertain.push(`마감 확인 필요: ${t.title}`);
     if (plan.overLimit.length > 0) notes.push(`한 번에 ${opts.maxCreates ?? DEFAULT_MAX_CREATES}건까지만 추가해요. ${plan.overLimit.length}건은 추가하지 않았어요.`);
-    if (interpretation.dropped.candidates + interpretation.dropped.dates > 0) {
-      notes.push(`근거가 부족한 후보 ${interpretation.dropped.candidates}건, 날짜 ${interpretation.dropped.dates}건은 빼거나 비웠어요.`);
-    }
   } else {
     notes.push("모델 없이 만든 기본 브리핑이에요.");
   }
@@ -130,7 +137,7 @@ export async function run(deps: RunDeps, opts: RunOptions): Promise<RunResult> {
   const norm = (t: string) => t.replace(/\s+/g, " ").trim().toLowerCase();
   const asked = new Set(Object.entries(memory.days).filter(([d]) => d < today).flatMap(([, r]) => r.questions.map(norm)));
   const remark = (interpretation?.remark ?? []).map((s) => s.text).filter((t) => !asked.has(norm(t)));
-  const { messages } = compose({ now, todo, failures, created, uncertain, notes, remark });
+  const { messages } = compose({ now, todo, failures, created, uncertain, notes, remark, ...extra });
   const delivery = await deliver(kakao, messages, { dryRun: opts.dryRun });
 
   if (!opts.dryRun && deps.memory) {

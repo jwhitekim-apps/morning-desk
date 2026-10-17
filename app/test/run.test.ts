@@ -15,6 +15,7 @@ import { FOLIO_ALLOWED } from "@morning-desk/folio";
 import { GITHUB_ALLOWED } from "@morning-desk/github";
 import { GMAIL_ALLOWED } from "@morning-desk/gmail";
 import { KAKAO_ALLOWED } from "@morning-desk/kakao";
+import { SERVER_CHECKS_ALLOWED } from "@morning-desk/server";
 import { TODO_ALLOWED } from "@morning-desk/microsoft-todo";
 import { SourceError } from "@morning-desk/shared";
 
@@ -30,7 +31,7 @@ type Answer = unknown | Error;
 const MAIL = { id: "m1", threadId: "t1", subject: "학회 초록 제출 안내", from: "conf@x.org", date: "2026-10-12T06:00:00+09:00", snippet: "초록 마감", threadSubject: "학회 초록 제출 안내" };
 
 /** 다섯 서버를 흉내 낸다. 모든 호출을 기록한다. */
-function world(over: Partial<Record<"todo" | "kakao" | "gmail" | "github" | "folio" | "create", Answer>> = {}) {
+function world(over: Partial<Record<"todo" | "kakao" | "gmail" | "github" | "folio" | "create" | "server", Answer>> = {}) {
   const pick = (v: Answer | undefined, fallback: unknown) => { if (v instanceof Error) throw v; return v ?? fallback; };
   const fake = fakeModules(async (server, tool, args) => {
     if (server === "todo" && tool === "listTasksDue") return pick(over.todo, { items: [{ title: "랩미팅", dueDate: "2026-10-12", body: { content: "15:00" } }] });
@@ -45,6 +46,7 @@ function world(over: Partial<Record<"todo" | "kakao" | "gmail" | "github" | "fol
       const dry = Boolean(args.dryRun);
       return { dryRun: dry, sent: dry ? 0 : msgs.length, messages: msgs.map((m, i) => ({ index: i + 1, chars: Array.from(m).length })) };
     }
+    if (server === "server") return pick(over.server, new SourceError("config_missing", "x"));
     throw new Error(`unexpected ${server}.${tool}`);
   });
   return { caller: fake.modules, calls: fake.calls };
@@ -87,7 +89,7 @@ describe("a normal day", () => {
     const w = world();
     const r = await go(w);
     expect(w.calls.some((c) => c.tool === "createTask")).toBe(false);
-    expect(r.messages.join("\n")).toContain("비교 모드라 To Do에 추가하지 않았어요.");
+    expect(r.messages.join("\n")).toContain("태스크 추가가 꺼져 있어요(찾은 일 1건은 To Do에 없어요).");
     expect(r.messages.join("\n")).toContain("학회 초록 제출(10/30)");
   });
 });
@@ -238,6 +240,132 @@ describe("memory and same-day runs", () => {
   });
 });
 
+const SENDER_SECRET = "conf@x.org";
+const SNIPPET_SECRET = "초록 마감";
+
+describe("source sections in the briefing", () => {
+  it("shows the read sources with titles even on a day with no candidates", async () => {
+    const w = world({ github: { items: [{ repo: "me/app", number: 3, title: "리뷰\n 부탁\u0007드려요", url: "u", updatedAt: "2026-10-12T00:00:00Z" }] } });
+    const r = await go(w, {}, model({ candidates: [], remark: [] }).model);
+    const text = r.messages.join("\n");
+    expect(text).toContain("[메일 · 이번에 새로 읽은 1통]\n· 학회 초록 제출 안내");
+    expect(text).toContain("[GitHub · 이번에 새로 읽은 1건]\n· me/app: 리뷰 부탁 드려요");
+    expect(text).toContain("[폴리오 · 이번에 새로 읽은 0편]");
+    expect(text).not.toContain("\u0007");
+  });
+
+  it("counts only what is new: a processed mail is not in the section", async () => {
+    const store = new MemoryStore(join(dir, "memory.json"));
+    await go(world(), {}, model().model, store);
+    const r = await run({ sources: world().caller, model: model({ candidates: [], remark: [] }).model, memory: store, logger: quiet }, { dryRun: false, now: new Date("2026-10-12T22:00:00Z") });
+    expect(r.messages.join("\n")).toContain("[메일 · 이번에 새로 읽은 0통]");
+  });
+
+  it("a source turned off is on the off-line, not in the failures, and gets no section", async () => {
+    const r = await go(world(), { collect: { enabled: { folio: false } } });
+    const text = r.messages.join("\n");
+    expect(text).toContain("[꺼진 소스]\n· 폴리오");
+    expect(text).not.toContain("[폴리오");
+    expect(r.failures.join(" ")).not.toContain("폴리오");
+    expect(text).not.toContain("[⚠ 실패]");
+  });
+
+  it("an enabled but unconfigured source is treated as off, not as a failure", async () => {
+    const w = world({ folio: new SourceError("config_error", "FOLIO_SUPABASE_URL and FOLIO_SUPABASE_KEY must be set.") });
+    const r = await go(w);
+    expect(r.messages.join("\n")).toContain("[꺼진 소스]\n· 폴리오");
+    expect(r.failures).toEqual([]);
+  });
+
+  it("a configuration that exists but is wrong stays a failure", async () => {
+    const w = world({ github: new SourceError("config_error", "The token has scopes beyond read-only (repo).") });
+    const r = await go(w);
+    expect(r.failures).toContain("GitHub 설정 누락".replace("설정 누락", "설정 누락"));
+    expect(r.messages.join("\n")).not.toContain("[꺼진 소스]\n· GitHub");
+  });
+
+  it("an expired login is a failure with its cause, and the other sections still render", async () => {
+    const r = await go(world({ gmail: new SourceError("auth_expired", "x") }));
+    const text = r.messages.join("\n");
+    expect(text).toContain("[⚠ 실패]\n· Gmail 로그인 만료");
+    expect(text).not.toContain("[메일 ·");
+    expect(text).toContain("[GitHub · 이번에 새로 읽은 0건]");
+    expect(text).not.toContain("[꺼진 소스]");
+  });
+
+  it("a network error is a failure too", async () => {
+    const r = await go(world({ folio: new SourceError("unavailable", "x") }));
+    expect(r.messages.join("\n")).toContain("· 폴리오 서버 일시 장애");
+  });
+
+  it("the sections also appear in the model-free briefing and the To Do failure notice", async () => {
+    const noModel = (await go(world(), {}, null, null)).messages.join("\n");
+    expect(noModel).toContain("[메일 · 이번에 새로 읽은 1통]");
+    const noTodo = (await go(world({ todo: new SourceError("auth_expired", "x") }), {}, model().model, null)).messages.join("\n");
+    expect(noTodo).toContain("· To Do 로그인 만료");
+  });
+
+  it("server problems appear in the briefing; a healthy server adds no problem", async () => {
+    const issues = { overall: "down", services: [{ name: "nginx", status: "down" }], containers: [] };
+    const r = await go(world({ server: issues }), {}, model({ candidates: [], remark: [] }).model);
+    expect(r.messages.join("\n")).toContain("nginx 중단");
+    const ok = await go(world({ server: { overall: "ok", services: [{ name: "nginx", status: "ok" }], containers: [] } }));
+    expect(ok.messages.join("\n")).not.toContain("nginx 중단");
+  });
+
+  it("a server check that blows up never breaks the run", async () => {
+    const r = await go(world({ server: new Error("boom") }));
+    expect(r.status).toBe("sent");
+  });
+
+  it("messages never carry a sender or a body snippet", async () => {
+    const r = await go(world(), {}, null, null);
+    const text = r.messages.join("\n");
+    expect(text).not.toContain(SENDER_SECRET);
+    expect(text).not.toContain(SNIPPET_SECRET);
+    expect(text).not.toContain("초록 제출 기한은");
+  });
+
+  it("dry run still sends nothing, creates nothing and records nothing, but shows the sections", async () => {
+    const w = world();
+    const store = new MemoryStore(join(dir, "memory.json"));
+    const r = await go(w, { dryRun: true, createTasks: true }, model().model, store);
+    expect(r.messages.join("\n")).toContain("[메일 ·");
+    expect(w.calls.some((c) => c.tool === "createTask")).toBe(false);
+    expect(w.calls.filter((c) => c.tool === "sendManyToMe").every((c) => c.args.dryRun === true)).toBe(true);
+    expect(w.calls.some((c) => c.tool === "checkServices")).toBe(true);
+    expect(store.load().lastSentDate).toBeUndefined();
+  });
+
+  it("logs the counts of what was read and no titles", async () => {
+    const lines: string[] = [];
+    const logger = createLogger("debug", (l) => lines.push(l));
+    await run({ sources: world().caller, model: model().model, memory: null, logger }, { dryRun: false, now: NOW });
+    const log = lines.join("");
+    expect(log).toContain("sources read");
+    expect(JSON.parse(lines.find((l) => l.includes("sources read"))!)).toMatchObject({ mails: 1, github: 0, papers: 0 });
+    for (const secret of ["학회 초록", "랩미팅", SENDER_SECRET, SNIPPET_SECRET]) expect(log).not.toContain(secret);
+  });
+});
+
+describe("reference notes", () => {
+  it("with task creation off and candidates found, says how many are not in To Do", async () => {
+    const r = await go(world());
+    expect(r.messages.join("\n")).toContain("태스크 추가가 꺼져 있어요(찾은 일 1건은 To Do에 없어요).");
+  });
+
+  it("dry run keeps its own wording", async () => {
+    const r = await go(world(), { dryRun: true });
+    expect(r.messages.join("\n")).toContain("드라이런이라 To Do에 추가하지 않았어요.");
+  });
+
+  it("no longer reports dropped candidates or dates", async () => {
+    const bad = { candidates: [{ ...GOOD.candidates[0]!, evidence: "본문에 없는 문장" }], remark: [] };
+    const text = (await go(world(), {}, model(bad).model)).messages.join("\n");
+    expect(text).not.toContain("근거가 부족한");
+  });
+});
+
 describe("deliver and the module surface", () => {
   it("deliver refuses to send nothing and reports char counts", async () => {
     await expect(deliver(world().caller.kakao, [], { dryRun: false })).rejects.toMatchObject({ code: "validation_error" });
@@ -252,6 +380,7 @@ describe("deliver and the module surface", () => {
       github: [...GITHUB_ALLOWED].sort(),
       folio: [...FOLIO_ALLOWED].sort(),
       kakao: [...KAKAO_ALLOWED].sort(),
+      server: [...SERVER_CHECKS_ALLOWED].sort(),
     });
     expect(TODO_ALLOWED).toContain("createTask");
     expect(KAKAO_ALLOWED).toEqual(["sendManyToMe"]);

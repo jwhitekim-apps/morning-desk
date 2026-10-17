@@ -7,6 +7,20 @@ export function stripMarker(memo: string): string {
   return memo.replace(/\[비서:[^\]]*\]/g, '').trim();
 }
 
+export interface SourceSection {
+  name: '메일' | 'GitHub' | '폴리오';
+  count: number;
+  titles: string[];
+}
+
+export interface ServerSection {
+  state: 'ok' | 'issues' | 'skipped' | 'failed';
+  problems: string[];
+}
+
+const SOURCE_UNIT: Record<SourceSection['name'], string> = { 메일: '통', GitHub: '건', 폴리오: '편' };
+const SOURCE_ORDER: SourceSection['name'][] = ['메일', 'GitHub', '폴리오'];
+
 export type ReportInput = {
   now: Date;
   timeZone?: string;
@@ -20,8 +34,12 @@ export type ReportInput = {
   stale?: { name: string; days: number }[];
   // 메일에서 가져온 일정 중 마감이 가까운 것
   mailDeadlines?: { name: string; deadline: string; daysLeft: number }[];
-  // 이번 주 폴리오에 새로 들어온 논문
-  papers?: { count: number; titles: string[] } | null;
+  // 소스별로 이번에 새로 읽은 건수와 제목(제목만: 보낸 사람·본문은 담지 않는다)
+  sourceSections?: SourceSection[];
+  // 꺼져 있거나 설정이 없어 읽지 않은 소스 이름(실패가 아니다)
+  disabledSources?: string[];
+  // 집 서버 점검 결과
+  server?: ServerSection;
   created: { name: string; deadline: string }[];
   uncertain: string[];
   failures: string[];
@@ -96,7 +114,7 @@ function monthDay(ymd: string): string {
 function header(now: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('ko-KR', { timeZone, month: 'numeric', day: 'numeric', weekday: 'short' }).formatToParts(now);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-  return `${get('month')}/${get('day')}(${get('weekday')}) 아침 보고`;
+  return `${get('month')}/${get('day')}(${get('weekday')}) 브리핑`;
 }
 
 function clip(line: string, limit: number): string {
@@ -274,10 +292,13 @@ export function buildReport(input: ReportInput, limit: number, maxMessages = 3):
   const add = (title: string, items: string[]) => {
     if (items.length > 0) sections.push({ title, items });
   };
+  const server = input.server;
+  const serverProblems = server && (server.state === 'issues' || server.state === 'failed') ? server.problems : null;
 
   // 위에서부터 중요한 순서다. 카톡 분량이 모자라면 아래쪽 구역부터 통째로 빠진다.
   add('⚠ 실패', input.failures.map((f) => `· ${f}`));
   add('확인', input.uncertain.map((u) => `· ${u}`));
+  if (serverProblems) add('⚠ 서버', serverProblems.length > 0 ? serverProblems.map((p) => `· ${p}`) : ['· 점검 실패']);
   add('먼저 할 일', (input.top ?? []).map((t, i) => `${i + 1}) ${t.name} — ${t.reason}`));
   add(
     '오늘',
@@ -290,15 +311,26 @@ export function buildReport(input: ReportInput, limit: number, maxMessages = 3):
   add('임박', capped(input.upcoming ?? [], (t) => `${t.name}(${monthDay(t.deadline)}${t.daysLeft !== undefined ? `·${t.daysLeft}일 후` : ''})`));
   add('메일 마감', capped(input.mailDeadlines ?? [], (t) => `${t.name}(${monthDay(t.deadline)}·${t.daysLeft}일 후)`, SMALL_CAP));
   add('방치', capped(input.stale ?? [], (t) => `${t.name}(${t.days}일째)`, 2));
-  if (input.papers && input.papers.count > 0) {
-    add(`폴리오 · 이번 주 새 논문 ${input.papers.count}편`, input.papers.titles.map((t) => `· ${clip(t, TITLE_LIMIT)}`));
-  }
   // 비서가 추가한(또는 추가할) 일은 사람이 확인할 수 있도록 개수 제한 없이 모두 적는다(실행당 추가 상한이 따로 있다).
   add(
     '새로 찾은 일',
     capped(collapse(input.created), (c) => `${c.name}(${c.deadline ? monthDay(c.deadline) : '마감 없음'})${c.times > 1 ? ` ×${c.times}` : ''}`, Number.POSITIVE_INFINITY),
   );
   add('할 일', capped(input.undated ?? [], (t) => (t.note ? `${t.name}(${t.note})` : t.name)));
+  // 소스별 보고: 읽은 것이 없어도(0건) 구역은 남긴다.
+  const bySource = new Map((input.sourceSections ?? []).map((x) => [x.name, x]));
+  for (const name of SOURCE_ORDER) {
+    const src = bySource.get(name);
+    if (!src) continue;
+    const titles = src.titles.map((t) => `· ${clip(t, TITLE_LIMIT)}`);
+    const shown = titles.slice(0, SECTION_CAP);
+    const rest = src.count > shown.length ? src.count - shown.length : 0;
+    if (rest > 0) shown.push(`…외 ${rest}건`);
+    add(`${name} · 이번에 새로 읽은 ${src.count}${SOURCE_UNIT[name]}`, src.count === 0 && shown.length === 0 ? ['읽은 것 없음'] : shown);
+  }
+  if (server?.state === 'ok') add('', ['서버 정상']);
+  if (server?.state === 'skipped') add('', ['서버 점검 건너뜀(설정 없음)']);
+  if ((input.disabledSources ?? []).length > 0) add('꺼진 소스', [`· ${(input.disabledSources ?? []).join(', ')}`]);
   add('참고', (input.notes ?? []).map((n) => `· ${n}`));
   add('', input.remark ?? []);
 

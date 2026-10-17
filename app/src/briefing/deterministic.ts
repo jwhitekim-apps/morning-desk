@@ -6,7 +6,7 @@ import { collectTodo, type TodoSlice } from "./todo";
 import { pickTop } from "./top";
 
 export const KAKAO_BUBBLE_LIMIT = 200;
-export const MAX_BUBBLES = 3;
+export const MAX_BUBBLES = 8;
 
 export interface BriefingResult {
   messages: string[];
@@ -22,12 +22,20 @@ export interface ComposeInput {
   uncertain?: string[];
   notes?: string[];
   remark?: string[];
+  sourceSections?: ReportInput["sourceSections"];
+  disabledSources?: string[];
+  server?: ReportInput["server"];
 }
 
 /** 모은 것을 구역으로 정리해 말풍선으로 만든다. To Do를 못 읽었으면 실패 구역만 담는다. */
 export function compose(c: ComposeInput): BriefingResult {
   const top = c.todo ? pickTop(c.todo) : [];
   const shown = new Set(top.map((t) => t.name));
+  const extras: Partial<ReportInput> = {
+    ...(c.sourceSections ? { sourceSections: c.sourceSections } : {}),
+    ...(c.disabledSources ? { disabledSources: c.disabledSources } : {}),
+    ...(c.server ? { server: c.server } : {}),
+  };
   // 먼저 할 일에 올린 것은 밀린 일·임박에서 되풀이하지 않는다(오늘 마감은 그대로 둔다).
   const input: ReportInput = c.todo
     ? {
@@ -41,8 +49,9 @@ export function compose(c: ComposeInput): BriefingResult {
         uncertain: c.uncertain ?? [],
         notes: [...(c.notes ?? []), ...c.todo.notes],
         remark: c.remark ?? [],
+        ...extras,
       }
-    : { now: c.now, tasksToday: [], created: [], uncertain: [], failures: c.failures ?? [] };
+    : { now: c.now, tasksToday: [], created: [], uncertain: [], failures: c.failures ?? [], ...extras };
   return { messages: buildReport(input, KAKAO_BUBBLE_LIMIT, MAX_BUBBLES), input };
 }
 

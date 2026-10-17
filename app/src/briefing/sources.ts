@@ -1,5 +1,7 @@
 // my-task original code (not derived from upstream).
 import type { SourceModules } from "../modules";
+import type { SourceSection } from "./report";
+import { SourceError } from "@morning-desk/shared";
 import { describeFailure, type SourceLabel } from "./failures";
 
 /** 모델에 넣을 메일. 본문은 상한이 있는 일부만 읽는다. */
@@ -60,17 +62,42 @@ export interface Collected {
   sources: Sources;
   /** 읽지 못한 소스와 이유(`Gmail 로그인 만료`). 소스마다 한 줄. */
   failures: string[];
+  /** 읽지 않은 소스 이름(`메일`, `GitHub`, `폴리오`): 꺼져 있거나 설정(자격 증명·주소)이 없는 것. 실패가 아니다. */
+  disabled: string[];
+  /** 읽는 데 실패한 소스 이름. 실패한 소스는 구역을 만들지 않는다. */
+  failed: string[];
 }
+
+export type SourceName = "메일" | "GitHub" | "폴리오";
 
 const DEFAULT_MAIL_QUERY = "in:inbox -category:promotions -category:social";
 
-async function settle<T>(source: SourceLabel, fn: () => Promise<T>, failures: string[], empty: T): Promise<T> {
+/**
+ * 소스를 쓰려는 설정(자격 증명·주소)이 아예 없을 때만 참이다. 이때는 실패가 아니라 "꺼진 소스"로 본다.
+ * `config_error`/`config_missing` 중에서 모듈이 "설정 안 됨"으로 던지는 것만 고른다: 서비스가 응답으로 거부한 경우(`status`가 있음),
+ * 읽기 전용이 아닌 토큰 권한, 잘못된 주소 같은 "설정은 있으나 틀림"은 실패로 남긴다.
+ * 로그인 문제(`auth_required`, `auth_expired`)와 네트워크·서비스 오류도 실패다.
+ */
+export function isUnconfigured(err: unknown): boolean {
+  if (!(err instanceof SourceError)) return false;
+  if (err.code !== "config_error" && err.code !== "config_missing") return false;
+  if (err.status != null) return false;
+  return /\b(is not set|must be set|No OAuth client configured)\b/.test(err.message);
+}
+
+async function settle<T>(source: SourceLabel, name: SourceName, fn: () => Promise<T>, out: Pick<Collected, "failures" | "disabled" | "failed">, empty: T): Promise<T> {
   try {
     return await fn();
   } catch (err) {
-    failures.push(describeFailure(source, err));
+    if (isUnconfigured(err)) out.disabled.push(name);
+    else { out.failures.push(describeFailure(source, err)); out.failed.push(name); }
     return empty;
   }
+}
+
+/** 카톡 메시지로 나가는 제목: 줄바꿈·연속 공백을 한 칸으로, 제어 문자는 뺀다. */
+export function cleanTitle(raw: string): string {
+  return raw.replace(/[\p{Cc}\u2028\u2029\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/gu, " ").replace(/\s+/g, " ").trim();
 }
 
 async function collectGmail(gmail: SourceModules["gmail"], o: CollectOptions): Promise<MailItem[]> {
@@ -90,13 +117,13 @@ async function collectGmail(gmail: SourceModules["gmail"], o: CollectOptions): P
   return fresh;
 }
 
-async function collectGithub(github: SourceModules["github"], o: CollectOptions, failures: string[]): Promise<GithubItem[]> {
+async function collectGithub(github: SourceModules["github"], o: CollectOptions, out2: Pick<Collected, "failures" | "disabled" | "failed">): Promise<GithubItem[]> {
   const out: GithubItem[] = [];
   const done = o.processed?.github ?? new Set<string>();
-  const once = (item: GithubItem) => { if (!done.has(item.id)) out.push(item); };
-  let failed: string | null = null;
+  const once = (item: GithubItem) => { if (!done.has(item.id) && !out.some((x) => x.id === item.id)) out.push(item); };
+  let failed: unknown = null;
   const attempt = async (fn: () => Promise<void>) => {
-    try { await fn(); } catch (err) { failed ??= describeFailure("GitHub", err); }
+    try { await fn(); } catch (err) { failed ??= err; }
   };
   await attempt(async () => {
     for (const r of (await github.listReviewRequests()).items) once({ kind: "review_request", repo: r.repo, id: `${r.repo}#${r.number}`, title: r.title, url: r.url, updatedAt: r.updatedAt });
@@ -110,7 +137,11 @@ async function collectGithub(github: SourceModules["github"], o: CollectOptions,
       for (const n of (await github.listNotifications()).items.filter((x) => x.reason !== "ci_activity")) once({ kind: "notification", repo: n.repo, id: `notif:${n.id}`, title: n.title, url: n.url, updatedAt: n.updatedAt });
     });
   }
-  if (failed) failures.push(failed);
+  if (failed) {
+    if (isUnconfigured(failed)) out2.disabled.push("GitHub");
+    else { out2.failures.push(describeFailure("GitHub", failed)); out2.failed.push("GitHub"); }
+    return [];
+  }
   return out;
 }
 
@@ -122,10 +153,27 @@ async function collectFolio(folio: SourceModules["folio"], now: Date, o: Collect
 
 /** 소스마다 정해진 함수를 부른다. 한 소스가 실패해도 나머지는 계속하고, 실패는 이유와 함께 돌려준다. */
 export async function collectSources(modules: Pick<SourceModules, "gmail" | "github" | "folio">, now: Date, o: CollectOptions = {}): Promise<Collected> {
-  const failures: string[] = [];
+  const out: Pick<Collected, "failures" | "disabled" | "failed"> = { failures: [], disabled: [], failed: [] };
   const on = { gmail: true, github: true, folio: true, ...o.enabled };
-  const mails = on.gmail ? await settle("Gmail", () => collectGmail(modules.gmail, o), failures, [] as MailItem[]) : [];
-  const github = on.github ? await collectGithub(modules.github, o, failures) : [];
-  const papers = on.folio ? await settle("폴리오", () => collectFolio(modules.folio, now, o), failures, [] as PaperItem[]) : [];
-  return { sources: { mails, github, papers }, failures };
+  if (!on.gmail) out.disabled.push("메일");
+  if (!on.github) out.disabled.push("GitHub");
+  if (!on.folio) out.disabled.push("폴리오");
+  const mails = on.gmail ? await settle("Gmail", "메일", () => collectGmail(modules.gmail, o), out, [] as MailItem[]) : [];
+  const github = on.github ? await collectGithub(modules.github, o, out) : [];
+  const papers = on.folio ? await settle("폴리오", "폴리오", () => collectFolio(modules.folio, now, o), out, [] as PaperItem[]) : [];
+  return { sources: { mails, github, papers }, ...out };
+}
+
+/**
+ * 브리핑의 소스 구역: 켜져 있고 읽는 데 성공한 소스마다 하나. 건수는 이번에 새로 읽은 것(이미 처리한 항목은 `collectSources`가 뺐다).
+ * 제목만 담는다: 메일은 제목(보낸 사람·본문·미리보기 없음), GitHub는 `저장소: 제목`, 폴리오는 논문 제목.
+ */
+export function buildSourceSections(c: Pick<Collected, "sources" | "disabled" | "failed">): SourceSection[] {
+  const skip = new Set([...c.disabled, ...c.failed]);
+  const titles = (xs: string[]) => xs.map(cleanTitle).filter((t) => t.length > 0);
+  const out: SourceSection[] = [];
+  if (!skip.has("메일")) out.push({ name: "메일", count: c.sources.mails.length, titles: titles(c.sources.mails.map((m) => m.subject)) });
+  if (!skip.has("GitHub")) out.push({ name: "GitHub", count: c.sources.github.length, titles: titles(c.sources.github.map((g) => `${g.repo}: ${g.title}`)) });
+  if (!skip.has("폴리오")) out.push({ name: "폴리오", count: c.sources.papers.length, titles: titles(c.sources.papers.map((p) => p.title)) });
+  return out;
 }

@@ -124,3 +124,5 @@ jobs:
 
 PR #1(https://github.com/jwhitekim/morning-desk/pull/1)의 첫 실행은 **실패**했다. 총 약 45초(생성 06:22:27 ~ 06:23:12). 단계별: 체크아웃 0초, setup-node(캐시 복원 포함) 6초, `npm ci` 3초, typecheck 14초, lint 2초, test 11초(실패), build는 건너뜀. 가장 긴 단계는 typecheck. 실패 원인은 `shared`의 `env-file-concurrency` 테스트 2개: 자식 프로세스가 `.ts` 파일을 직접 실행하는데 Node 20이 `ERR_UNKNOWN_FILE_EXTENSION`으로 거부한다. 그 밖의 테스트(`app` 148개, 다른 작업공간 44개 등)는 통과했다. 그래서 테스트 527개 통과 기준은 아직 확인하지 못했고, 작업 3.5에서 고친다.
 
+**재실행 결과**: 수정 커밋 f13c4df로 다시 돌린 실행은 **초록**이다. 총 약 37초(06:25:32 ~ 06:26:09). 단계별: setup-node 4초, `npm ci` 3초, typecheck 8초, lint 2초, test 10초, build 1초. 가장 긴 단계는 test(10초)와 typecheck(8초)이고, 테스트 총합은 527개(17+49+59+70+61+79+44+148)다. Node 20 호환 수정: `env-file-concurrency` 테스트가 자식 프로세스를 `process.execPath`로 직접 `.ts`를 실행하던 것을 vitest에 딸린 `vite-node` CLI를 통해 실행하도록 바꿨다(새 의존성 없음, 코드와 `engines` 변경 없음).
+

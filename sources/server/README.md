@@ -58,7 +58,7 @@
 |---|---|
 | `SERVER_TARGETS` | 설정 파일 경로(예전 이름 `SERVER_MCP_TARGETS`는 더 읽지 않음) |
 | `LOCAL_LLM_API_KEY` | 학교 모델 서버의 키(앱의 모델 호출과 같은 값). 결과와 로그에 나오지 않음 |
-| `NODE_EXTRA_CA_CERTS` | 학교 모델 서버가 자체 서명 인증서면 그 인증서 파일(집 서버: `/etc/nginx/llm-origin.crt`) |
+| `NODE_EXTRA_CA_CERTS` | 학교 모델 서버가 자체 서명 인증서면 그 인증서 파일 |
 | `LOG_LEVEL` | `debug`/`info`/`warn`/`error`/`silent` |
 
 설치와 검사는 저장소 루트에서 합니다(npm workspace). 이 모듈은 따로 빌드하지 않고, 앱을 빌드할 때 함께 묶입니다.

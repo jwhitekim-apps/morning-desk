@@ -119,8 +119,12 @@ function header(now: Date, timeZone: string): string {
   return `${get('month')}/${get('day')}(${get('weekday')}) 브리핑`;
 }
 
+// 카카오 모듈(sources/kakao)의 countChars와 같은 셈법(코드 포인트). 의존 방향을 새로 만들지 않으려고 한 줄을 복제했다.
+const countChars = (text: string): number => Array.from(text).length;
+
 function clip(line: string, limit: number): string {
-  return line.length <= limit ? line : `${line.slice(0, limit - 1)}…`;
+  const chars = Array.from(line);
+  return chars.length <= limit ? line : `${chars.slice(0, Math.max(0, limit - 1)).join('')}…`;
 }
 
 // 중요한 줄부터 순서대로 채운다. 한 통의 한도를 넘으면 다음 통으로 넘어가고,
@@ -132,7 +136,7 @@ export function pack(lines: string[], limit: number, maxMessages: number): strin
   for (const raw of lines) {
     const line = clip(raw, limit);
     const current = lastOf(chunks);
-    const size = [...current, line].join('\n').length;
+    const size = countChars([...current, line].join('\n'));
     if (size <= limit) {
       current.push(line);
     } else if (chunks.length < maxMessages) {
@@ -145,7 +149,7 @@ export function pack(lines: string[], limit: number, maxMessages: number): strin
   while (omitted > 0) {
     const last = lastOf(chunks);
     const summary = `…외 ${omitted}건 생략`;
-    if ([...last, summary].join('\n').length <= limit) {
+    if (countChars([...last, summary].join('\n')) <= limit) {
       last.push(summary);
       break;
     }
@@ -166,7 +170,9 @@ export function pack(lines: string[], limit: number, maxMessages: number): strin
 type Section = { title: string; items: string[] };
 
 // 말풍선이 여럿일 때 붙이는 쪽 표시("(2/3)")가 차지할 자리. 모든 말풍선이 이만큼 덜 채워진다.
+// 통 수의 자릿수가 늘면 표시도 길어지므로("(9/9)" 대 "(10/12)") 최대 통 수로 정확히 계산한다: 머리말 뒤 " " 또는 앞 "\n\n" 2자 + "(N/N)".
 const PAGE_TAG_RESERVE = 8;
+const tagReserve = (maxMessages: number): number => Math.max(PAGE_TAG_RESERVE, 2 * String(maxMessages).length + 5);
 
 function renderSection(section: Section): string {
   return section.title ? [`[${section.title}]`, ...section.items].join('\n') : section.items.join('\n');
@@ -181,8 +187,8 @@ const MIN_PIECE = 24;
 // 통 수를 넘으면 그 구역부터 뒤쪽 구역을 통째로 빼고 "…외 N건 생략"을 남긴다(중요도 순서는 뒤바뀌지 않는다).
 // 말풍선이 둘 이상이면 머리말에 "(1/3)"을, 나머지 말풍선 맨 앞에 "(2/3)"을 붙인다.
 export function packSections(header: string, sections: Section[], limit: number, maxMessages: number): string[] {
-  const capacity = limit - PAGE_TAG_RESERVE;
-  const size = (blocks: string[]) => blocks.join('\n\n').length;
+  const capacity = Math.max(1, limit - tagReserve(maxMessages));
+  const size = (blocks: string[]) => countChars(blocks.join('\n\n'));
   const bubbles: string[][] = [[clip(header, capacity)]];
   let omitted = 0;
   let full = false;
@@ -204,7 +210,7 @@ export function packSections(header: string, sections: Section[], limit: number,
       continue;
     }
     const whole = renderSection(section);
-    if (whole.length <= capacity) {
+    if (countChars(whole) <= capacity) {
       place(whole, section.items.length);
       continue;
     }
@@ -231,8 +237,8 @@ export function packSections(header: string, sections: Section[], limit: number,
         continue;
       }
       const itemRoom = pieceIndex === 0 && items.length === 0 && headerOnly ? remaining : capacity;
-      const item = clip(raw, Math.max(10, itemRoom - titleOf().length - 4));
-      if (items.length > 0 && renderSection({ title: titleOf(), items: [...items, item] }).length > room) {
+      const item = clip(raw, Math.max(10, itemRoom - countChars(titleOf()) - 4));
+      if (items.length > 0 && countChars(renderSection({ title: titleOf(), items: [...items, item] })) > room) {
         flush();
         if (full) {
           omitted += 1;
@@ -265,10 +271,13 @@ export function packSections(header: string, sections: Section[], limit: number,
   }
 
   const total = bubbles.length;
+  // 마지막 안전장치: 어떤 경우에도 한도를 넘는 말풍선은 보내지 않는다. 넘치면 끝을 "…"로 줄인다.
   return bubbles.map((blocks, index) => {
-    if (total === 1) return blocks.join('\n\n');
-    if (index === 0) return [`${blocks[0]} (1/${total})`, ...blocks.slice(1)].join('\n\n');
-    return [`(${index + 1}/${total})`, ...blocks].join('\n\n');
+    let text: string;
+    if (total === 1) text = blocks.join('\n\n');
+    else if (index === 0) text = [`${blocks[0]} (1/${total})`, ...blocks.slice(1)].join('\n\n');
+    else text = [`(${index + 1}/${total})`, ...blocks].join('\n\n');
+    return clip(text, limit);
   });
 }
 

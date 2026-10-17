@@ -63,7 +63,9 @@
 | `actions/checkout` | `v7.0.1` | `3d3c42e5aac5ba805825da76410c181273ba90b1` | 2026-07-17 |
 | `actions/setup-node` | `v7.1.0` | `949feb2413d6458794dcd2491c4babbbce0c15c1` | 2026-10-08 |
 
-둘 다 `action.yml`의 실행 환경이 `node24`다(GitHub 호스팅 러너가 지원). 코드는 `action.yml`의 `using`과 `setup-node`의 입력 정의까지만 읽었고 **본문 코드는 읽지 않았다**. `AGENTS.md`의 "서드파티 코드는 쓰기 전에 읽는다"에 따라 구현 직전에 작업 1.3으로 보강한다. 두 액션은 GitHub 공식 조직(`actions`)이 관리한다. 구현 시점에 최신 태그가 바뀌었으면 같은 방법으로 다시 읽고 SHA를 갱신한다(SHA를 지어내지 않는다). 자동 갱신 도구는 범위 밖이므로 갱신은 수동이다.
+둘 다 `action.yml`의 실행 환경이 `node24`다(GitHub 호스팅 러너가 지원). 두 액션은 GitHub 공식 조직(`actions`)이 관리한다. 구현 시점에 최신 태그가 바뀌었으면 같은 방법으로 다시 읽고 SHA를 갱신한다(SHA를 지어내지 않는다). 자동 갱신 도구는 범위 밖이므로 갱신은 수동이다.
+
+**읽은 범위와 결과 (2026-10-17, 작업 1.3)**: 고정 SHA 시점의 `action.yml`, 저장소 트리, `src/` 전체(checkout 18개, setup-node 17개)를 읽고, 번들 `dist/`는 `child_process`·`eval`·`https://` 호스트·토큰 이름을 grep으로만 확인했다(번들 전체를 읽지는 않았다). 두 저장소 모두 `actions` 조직(Organization)이다. 접속 대상은 github.com, api.github.com(`GITHUB_SERVER_URL`·`GITHUB_API_URL` 기본값), setup-node의 `nodejs.org`(Node 배포 목록, 매니페스트는 GitHub `node-versions`)와 Actions 캐시(Azure Blob `*.blob.core.windows.net`)뿐이고 예상 밖의 호스트는 없다. `child_process`는 쓰지 않고 `@actions/exec`로 `git`(checkout)과 `node --version`·`npm config get cache`(setup-node)만 실행한다. checkout의 `token`(기본 `github.token`)은 가져오는 동안 로컬 git 설정의 `http.<서버>/.extraheader`에 쓰이고, `persist-credentials: false`면 가져온 뒤 지워 디스크에 남기지 않는다. setup-node의 `token`은 Node 배포 목록을 받을 때의 인증에만 쓰이며, `.npmrc`와 `NODE_AUTH_TOKEN`은 `registry-url`을 줄 때만 쓰는데 우리는 주지 않는다. 난독화, `eval`, 설치 후 미고정 코드 내려받기는 보이지 않았다. 의심스러운 점 없음.
 
 ### 6. 러너와 시간 제한
 `runs-on: ubuntu-latest`(다른 프로젝트의 워크플로도 같은 것을 쓴다). 이미지가 바뀌면 결과가 달라질 수 있다는 단점이 있고, 필요해지면 특정 버전 라벨로 고정한다. `timeout-minutes: 10`: 예상 1~2분의 몇 배로, 멈춘 실행이 분량을 먹는 것을 막는다.
@@ -114,6 +116,6 @@ jobs:
 
 ## Open Questions
 
-1. **운영 Node 24도 함께 돌릴까?** 지금 계획은 Node 20만이다(최소 지원 버전, 미검증이므로). 운영이 24라서 `[20, 24]` 행렬로 두 개를 돌리는 것이 안전하지만, 비공개 저장소의 분량이 두 배로 든다. 추천: 먼저 20만 돌리고, 한도를 확인한 뒤(작업 3.4) 24를 더할지 정한다.
+1. **운영 Node 24도 함께 돌릴까?** **결정됨 (2026-10-17, 소유자: Node 20만)**. 지금은 Node 20만 돌린다. 운영이 24라서 `[20, 24]` 행렬이 더 안전하지만 비공개 저장소의 분량이 두 배로 들기 때문이다. 24 추가 여부는 한도를 확인한 뒤(작업 3.4) 다시 정한다.
 2. **저장소 설정 `sha_pinning_required`를 켤까?** 켜면 SHA로 고정하지 않은 액션이 실행되지 않는다. 지금 계획과 맞지만 저장소 설정 변경이라 이 변경의 범위 밖이다. 소유자가 원하면 설정에서 직접 켠다(선택).
 3. **브랜치 보호(필수 검사)**: 범위 밖. CI가 한 번 초록으로 도는 것을 본 뒤에 소유자가 정한다.

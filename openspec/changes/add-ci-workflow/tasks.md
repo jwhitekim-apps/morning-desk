@@ -20,10 +20,10 @@
 - [ ] 3.2 첫 실행의 결과와 소요 시간을 기록한다. 검증: 모든 단계가 통과하고(Node 20에서 테스트 527개), 총 소요 시간과 `npm ci`·캐시 복원 시간이 design.md에 적혀 있다. 실패하면 원인(Node 20, 대소문자, 시간대 등)과 고칠 작업을 이 목록에 더한다
 - [ ] 3.3 일부러 실패하는 변경(예: 타입 오류 한 줄)을 다른 브랜치에 올려 CI가 빨갛게 되는지 본다. 검증: 실패한 실행이 화면에 나타나고 실패 단계가 `typecheck`로 표시된다. 시험 브랜치는 지운다
 - [ ] 3.4 소유자가 GitHub 설정의 Actions 사용량 화면에서 이 비공개 저장소의 월 한도와 사용량을 확인한다. 검증: 한도와 첫 실행 이후 사용량이 design.md의 위험 항목에 기록되어 있다. 부담이 크면 Node 24 추가 여부(열린 질문 1)와 트리거 범위를 다시 정한다
+- [ ] 3.5 첫 실행 실패의 원인을 고친다(3.2 선행). 원인: `shared/test/env-file-concurrency.test.ts` 2개가 자식 프로세스로 `.ts`를 직접 실행하는데 Node 20은 `.ts`를 읽지 못한다(ERR_UNKNOWN_FILE_EXTENSION). 로컬 Node는 더 새 버전으로 보인다. 검증: Node 20에서 `npm test`가 통과하고 CI가 초록이 된다
 
 ## 4. 이 변경 밖의 후속 (참고, 이 변경에서 하지 않는다)
 
 - 브랜치 보호와 필수 검사, README 배지, 액션 자동 갱신(Dependabot)
 - `npm audit` 정리: 개발 도구 3건(`vitest`, `tinypool`, `vite`)과 운영 의존성 보통 2건(`@azure/msal-node`, `uuid`)의 버전 올리기와 CI에 audit 단계 추가
 - `deploy-via-actions`: 이 CI를 선행 조건으로, 통과한 커밋만 서버에 배포하는 별도 변경(서버 접속 비밀 등록은 소유자 작업)
-- [ ] 3.5 첫 실행 실패의 원인을 고친다(3.2 선행). 원인: `shared/test/env-file-concurrency.test.ts` 2개가 자식 프로세스로 `.ts`를 직접 실행하는데 Node 20은 `.ts`를 읽지 못한다(ERR_UNKNOWN_FILE_EXTENSION). 로컬 Node는 더 새 버전으로 보인다. 검증: Node 20에서 `npm test`가 통과하고 CI가 초록이 된다

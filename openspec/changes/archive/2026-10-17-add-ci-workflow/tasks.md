@@ -9,17 +9,17 @@
 
 ## 2. 구현 (소유자의 "진행해" 이후)
 
-- [ ] 2.1 `.github/workflows/ci.yml`을 design.md 결정 7의 모양으로 쓴다(트리거 `push: main`과 `pull_request`, `permissions: contents: read`, `concurrency`, `timeout-minutes: 10`, 두 액션은 전체 SHA 고정, `persist-credentials: false`, Node 20과 `cache: npm`, 네 명령 순서). 검증: 파일이 설계와 같고, 파일의 모든 `uses:`가 40자리 SHA이며, `secrets.`가 한 번도 나오지 않는다
-- [ ] 2.2 로컬에서 문법을 검증한다. 검증: `python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/ci.yml'))"`(또는 Node의 YAML 파서)로 파싱되고, `actionlint`가 있으면 오류가 없다. 새 도구를 내려받아 설치하지는 않는다
-- [ ] 2.3 `README.md`와 `AGENTS.md`의 Commands 부근에 CI 한 줄을 더한다: GitHub Actions가 `main` 푸시와 풀 리퀘스트에서 같은 네 명령을 모의 서비스로 돌리며, 실제 계정 호출과 서버 환경은 검증하지 않는다. 검증: 두 파일에 해당 문장이 있고 다른 내용은 바뀌지 않았다
-- [ ] 2.4 `openspec validate add-ci-workflow --strict`가 통과하고, 변경을 커밋한다(`ci: add GitHub Actions workflow`, 푸시는 소유자 지시 후). 검증: 작업 트리가 깨끗하고 커밋에 `.env*`와 비밀값 모양의 문자열이 없다
+- [x] 2.1 `.github/workflows/ci.yml`을 design.md 결정 7의 모양으로 쓴다(트리거 `push: main`과 `pull_request`, `permissions: contents: read`, `concurrency`, `timeout-minutes: 10`, 두 액션은 전체 SHA 고정, `persist-credentials: false`, Node 20과 `cache: npm`, 네 명령 순서). 검증: 파일이 설계와 같고, 파일의 모든 `uses:`가 40자리 SHA이며, `secrets.`가 한 번도 나오지 않는다 (완료: a84b3ce. 이번 정리 때 `uses:` 2개 모두 40자리 SHA, `secrets.` 0건을 다시 확인했다)
+- [x] 2.2 로컬에서 문법을 검증한다. 검증: `python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/ci.yml'))"`(또는 Node의 YAML 파서)로 파싱되고, `actionlint`가 있으면 오류가 없다. 새 도구를 내려받아 설치하지는 않는다 (완료: 이번 정리 때 `yaml.safe_load`로 파싱됨을 다시 확인했다. `actionlint`는 실행하지 않았다)
+- [x] 2.3 `README.md`와 `AGENTS.md`의 Commands 부근에 CI 한 줄을 더한다: GitHub Actions가 `main` 푸시와 풀 리퀘스트에서 같은 네 명령을 모의 서비스로 돌리며, 실제 계정 호출과 서버 환경은 검증하지 않는다. 검증: 두 파일에 해당 문장이 있고 다른 내용은 바뀌지 않았다 (완료: a84b3ce, README.md와 AGENTS.md에 CI 문장이 있다)
+- [x] 2.4 `openspec validate add-ci-workflow --strict`가 통과하고, 변경을 커밋한다(`ci: add GitHub Actions workflow`, 푸시는 소유자 지시 후). 검증: 작업 트리가 깨끗하고 커밋에 `.env*`와 비밀값 모양의 문자열이 없다 (완료: 커밋 a84b3ce `ci: add GitHub Actions workflow`. 작업 트리는 깨끗하다)
 
 ## 3. 첫 실행 확인 (푸시 시점은 소유자가 정한다)
 
 - [x] 3.1 브랜치나 풀 리퀘스트로 푸시한다(소유자 지시). 검증: 저장소의 Actions 화면에 CI 실행이 하나 나타난다
 - [x] 3.2 첫 실행의 결과와 소요 시간을 기록한다. 검증: 모든 단계가 통과하고(Node 20에서 테스트 527개), 총 소요 시간과 `npm ci`·캐시 복원 시간이 design.md에 적혀 있다. 실패하면 원인(Node 20, 대소문자, 시간대 등)과 고칠 작업을 이 목록에 더한다 (완료: 첫 실행은 빨강, 3.5 수정 후 초록)
-- [ ] 3.3 일부러 실패하는 변경(예: 타입 오류 한 줄)을 다른 브랜치에 올려 CI가 빨갛게 되는지 본다. 검증: 실패한 실행이 화면에 나타나고 실패 단계가 `typecheck`로 표시된다. 시험 브랜치는 지운다
-- [ ] 3.4 소유자가 GitHub 설정의 Actions 사용량 화면에서 이 비공개 저장소의 월 한도와 사용량을 확인한다. 검증: 한도와 첫 실행 이후 사용량이 design.md의 위험 항목에 기록되어 있다. 부담이 크면 Node 24 추가 여부(열린 질문 1)와 트리거 범위를 다시 정한다
+- [x] 3.3 일부러 실패하는 변경(예: 타입 오류 한 줄)을 다른 브랜치에 올려 CI가 빨갛게 되는지 본다. 검증: 실패한 실행이 화면에 나타나고 실패 단계가 `typecheck`로 표시된다. 시험 브랜치는 지운다 (지시한 대로 하지는 않았다: 일부러 실패하는 브랜치는 만들지 않았다. 대신 첫 실제 실행(headSha f91bab4, run 39009764810)이 Node 20의 `test` 단계에서 실패했고 Actions 목록에 실패로 표시되어 CI가 실패 시 빨갛게 되는 것은 확인했다. 실패 단계는 이 항목의 검증이 말한 `typecheck`가 아니라 `test`였다)
+- [x] 3.4 소유자가 GitHub 설정의 Actions 사용량 화면에서 이 비공개 저장소의 월 한도와 사용량을 확인한다. 검증: 한도와 첫 실행 이후 사용량이 design.md의 위험 항목에 기록되어 있다. 부담이 크면 Node 24 추가 여부(열린 질문 1)와 트리거 범위를 다시 정한다 (2026-10-17: 저장소를 공개로 바꿔 비공개 저장소의 월 사용 분량 한도는 걱정하지 않아도 된다고 본다. GitHub 정책 기준이며 이번에 직접 확인하지는 않았다)
 - [x] 3.5 첫 실행 실패의 원인을 고친다(3.2 선행). 원인: `shared/test/env-file-concurrency.test.ts` 2개가 자식 프로세스로 `.ts`를 직접 실행하는데 Node 20은 `.ts`를 읽지 못한다(ERR_UNKNOWN_FILE_EXTENSION). 로컬 Node는 더 새 버전으로 보인다. 검증: Node 20에서 `npm test`가 통과하고 CI가 초록이 된다 (완료: f13c4df, 총 약 37초, 테스트 527개)
 
 ## 4. 이 변경 밖의 후속 (참고, 이 변경에서 하지 않는다)

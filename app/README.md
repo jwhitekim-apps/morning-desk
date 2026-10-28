@@ -13,11 +13,12 @@
 | `@morning-desk/github` | `listReviewRequests`, `listAssignedItems`, `listNotifications` |
 | `@morning-desk/folio` | `listRecentPapers` (그 밖에 `searchPapers`) |
 | `@morning-desk/kakao` | `sendManyToMe` |
+| `@morning-desk/server` | `checkServices`, `checkLlm` |
 
 - 하루 실행(`run`)이 받는 것은 이 함수들뿐입니다(`src/modules.ts`의 `SourceModules`). 각 모듈의 허용 목록은 모듈의 `test/allowlist.test.ts`가 고정하고, 앱의 `test/run.test.ts`가 "앱이 받는 함수 = 모듈 허용 목록"을 확인합니다. 로그인 함수는 하루 실행에 들어오지 않습니다.
 - 모델은 후보만 냅니다. 중복 확인, 같은 스레드 합치기, 출처 문구, 실행당 상한은 코드가 정한 뒤에 `createTask`를 부릅니다.
 - 소스 호출마다 제한 시간(120초)이 있고, 한 소스가 실패해도 나머지로 브리핑을 만들고 실패 구역에 원인을 적습니다.
-- 서버 점검 모듈(`@morning-desk/server`)은 아직 하루 실행에 연결되어 있지 않습니다.
+- 서버 점검 모듈(`@morning-desk/server`)은 하루 실행에서 `checkServices`와 `checkLlm`을 호출하고, 결과를 브리핑에 반영합니다.
 
 ## 명령
 
